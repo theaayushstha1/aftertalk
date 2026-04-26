@@ -1,0 +1,64 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+*.xccheckout
+*.moved-aside
+
+# Swift Package Manager
+.build/
+Packages/
+Package.resolved
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+
+# CocoaPods (we don't use, but just in case)
+Pods/
+
+# Carthage
+Carthage/Build/
+
+# Bundler / Fastlane
+.bundle/
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Models — too large for git, downloaded on first launch
+Models/*.onnx
+Models/*.mlpackage
+Models/*.mlmodelc
+Aftertalk/Resources/Models/
+
+# Profiling raw outputs (chart pngs are committed)
+perf/*.csv
+!perf/30min-meeting-chart.png
+!perf/perf-template.csv
+
+# Golden test fixtures: keep transcripts, ignore raw audio
+golden/*.wav
+golden/*.m4a
+golden/*.mp3
+
+# OS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# IDE
+.vscode/
+.idea/
+
+# Secrets — none in this project but being explicit
+.env
+.env.local
+*.p12
+*.mobileprovision
+secrets.json
