@@ -67,3 +67,4 @@ Icon
 *.p12
 *.mobileprovision
 secrets.json
+.claude/

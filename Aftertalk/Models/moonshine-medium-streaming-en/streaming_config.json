@@ -1,17 +1,17 @@
 {
-  "encoder_dim": 320,
-  "decoder_dim": 320,
-  "depth": 6,
-  "nheads": 8,
-  "head_dim": 40,
+  "encoder_dim": 768,
+  "decoder_dim": 640,
+  "depth": 14,
+  "nheads": 10,
+  "head_dim": 64,
   "vocab_size": 32768,
   "bos_id": 1,
   "eos_id": 2,
   "frame_len": 80,
   "total_lookahead": 16,
-  "d_model_frontend": 320,
-  "c1": 640,
-  "c2": 320,
+  "d_model_frontend": 768,
+  "c1": 1536,
+  "c2": 768,
   "frontend_state_shapes": {
     "sample_buffer": [
       1,
@@ -22,12 +22,12 @@
     ],
     "conv1_buffer": [
       1,
-      320,
+      768,
       4
     ],
     "conv2_buffer": [
       1,
-      640,
+      1536,
       4
     ],
     "frame_count": [

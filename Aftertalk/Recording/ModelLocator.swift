@@ -14,8 +14,8 @@ enum ModelLocator {
         return dir
     }
 
-    static func moonshineTinyDirectory() -> URL {
-        let folderName = "moonshine-tiny-streaming-en"
+    static func moonshineModelDirectory() -> URL {
+        let folderName = "moonshine-medium-streaming-en"
         let fm = FileManager.default
         let bundled = Bundle.main.bundleURL
             .appendingPathComponent("Models", isDirectory: true)

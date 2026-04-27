@@ -33,6 +33,7 @@ struct ASRDiagnostics: Sendable, Hashable {
 }
 
 protocol ASRService: AnyObject, Sendable {
+    func warm() async throws
     func start() async throws
     func append(samples: [Float], sampleRate: Int32)
     func stop() async
@@ -73,21 +74,21 @@ final class MoonshineStreamer: ASRService, @unchecked Sendable {
         self.diagContinuation = diagSink
     }
 
-    func start() async throws {
+    /// Loads the Transcriber + creates the Stream + attaches the listener.
+    /// Idempotent. Safe to call from `.task` / view-appear so the first user
+    /// press doesn't pay the cold-start cost (~600ms with mediumStreaming).
+    /// Does NOT arm the session — call `start()` per utterance.
+    func warm() async throws {
         guard FileManager.default.fileExists(atPath: modelDirectory.path) else {
             throw MoonshineError.modelNotFound(modelDirectory)
         }
-
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
             queue.async { [weak self] in
                 guard let self else { cont.resume(); return }
                 do {
-                    // Lazy-init Transcriber + Stream once; they live for the
-                    // app lifetime. Moonshine's ONNX runtime state breaks if
-                    // the Transcriber is recreated.
                     if self.transcriber == nil {
                         let t = try Transcriber(modelPath: self.modelDirectory.path,
-                                                modelArch: .tinyStreaming)
+                                                modelArch: .mediumStreaming)
                         let s = try t.createStream(updateInterval: 0.10)
                         s.addListener { [weak self] event in
                             self?.dispatch(event)
@@ -96,7 +97,23 @@ final class MoonshineStreamer: ASRService, @unchecked Sendable {
                         self.stream = s
                         self.log.debug("Moonshine warm")
                     }
+                    cont.resume()
+                } catch {
+                    self.diagState.lastAddAudioError = "warm: \(error)"
+                    self.publishDiag()
+                    cont.resume(throwing: MoonshineError.loadFailed(String(describing: error)))
+                }
+            }
+        }
+    }
 
+    func start() async throws {
+        try await warm()
+
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
+            queue.async { [weak self] in
+                guard let self else { cont.resume(); return }
+                do {
                     // Per-session: arm the stream. Calling start() on an
                     // already-active stream would double-start the ONNX
                     // pipeline, so guard with isActive().
