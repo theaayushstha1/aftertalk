@@ -2,6 +2,7 @@ import SwiftData
 import SwiftUI
 
 struct MeetingsListView: View {
+    let qaContext: QAContext?
     @Query(sort: \Meeting.recordedAt, order: .reverse) private var meetings: [Meeting]
 
     var body: some View {
@@ -26,7 +27,7 @@ struct MeetingsListView: View {
             .navigationTitle("Meetings")
             .navigationDestination(for: UUID.self) { id in
                 if let m = meetings.first(where: { $0.id == id }) {
-                    MeetingDetailView(meeting: m)
+                    MeetingDetailView(meeting: m, qaContext: qaContext)
                 } else {
                     Text("Meeting not found.")
                 }

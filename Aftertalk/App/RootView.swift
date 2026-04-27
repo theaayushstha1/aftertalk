@@ -7,6 +7,7 @@ struct RootView: View {
 
     @State private var recording = RecordingViewModel()
     @State private var pipeline: MeetingProcessingPipeline?
+    @State private var qa: QAContext?
     @State private var debugVisible = true
 
     var body: some View {
@@ -14,7 +15,7 @@ struct RootView: View {
             recordTab
                 .tabItem { Label("Record", systemImage: "mic.circle.fill") }
 
-            MeetingsListView()
+            MeetingsListView(qaContext: qa)
                 .tabItem { Label("Meetings", systemImage: "list.bullet.rectangle.portrait") }
         }
         .task { configurePipeline() }
@@ -100,6 +101,7 @@ struct RootView: View {
             recording.lastError = "embedding: \(error)"
             return
         }
+        let store = SwiftDataVectorStore(modelContainer: container)
         let p = MeetingProcessingPipeline(repository: repository, embeddings: embeddings, llm: llm)
         pipeline = p
         recording.onSessionEnded = { transcript, duration in
@@ -107,6 +109,12 @@ struct RootView: View {
                 _ = await p.process(transcript: transcript, durationSeconds: duration)
             }
         }
+
+        let retriever = HierarchicalRetriever(embeddings: embeddings, store: store)
+        let tts = AVSpeechSynthesizerTTS()
+        let orchestrator = QAOrchestrator(retriever: retriever, tts: tts)
+        let questionASR = QuestionASR()
+        qa = QAContext(orchestrator: orchestrator, questionASR: questionASR, repository: repository)
     }
 }
 

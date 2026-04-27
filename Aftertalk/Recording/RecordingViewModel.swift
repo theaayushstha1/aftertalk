@@ -34,7 +34,7 @@ final class RecordingViewModel {
     private var startMonotonic: ContinuousClock.Instant?
 
     init() {
-        let modelDir = ModelLocator.moonshineTinyDirectory()
+        let modelDir = ModelLocator.moonshineModelDirectory()
         let s = MoonshineStreamer(modelDirectory: modelDir)
         self.streamer = s
         self.pump = SamplePump(streamer: s)

@@ -78,8 +78,56 @@ actor MeetingsRepository {
         try modelContext.save()
     }
 
+    /// Returns the chat thread ID for the given meeting, creating one on first
+    /// access. Per-meeting threads always have `isGlobal = false` and a non-nil
+    /// `meetingId`; the global cross-meeting thread is created in Day 5.
+    func chatThreadId(for meetingId: UUID) throws -> UUID {
+        let descriptor = FetchDescriptor<ChatThread>(
+            predicate: #Predicate { $0.meetingId == meetingId && $0.isGlobal == false }
+        )
+        if let existing = try modelContext.fetch(descriptor).first {
+            return existing.id
+        }
+        guard let meeting = try fetchMeeting(meetingId) else {
+            throw QARepositoryError.meetingNotFound
+        }
+        let thread = ChatThread(meetingId: meetingId, isGlobal: false)
+        modelContext.insert(thread)
+        thread.meeting = meeting
+        try modelContext.save()
+        return thread.id
+    }
+
+    func appendChatMessage(threadId: UUID,
+                            role: String,
+                            text: String,
+                            citations: [ChunkCitation] = []) throws {
+        let descriptor = FetchDescriptor<ChatThread>(
+            predicate: #Predicate { $0.id == threadId }
+        )
+        guard let thread = try modelContext.fetch(descriptor).first else {
+            throw QARepositoryError.threadNotFound
+        }
+        let message = ChatMessage(role: role, text: text, citations: citations)
+        modelContext.insert(message)
+        message.thread = thread
+        try modelContext.save()
+    }
+
     private func fetchMeeting(_ id: UUID) throws -> Meeting? {
         let descriptor = FetchDescriptor<Meeting>(predicate: #Predicate { $0.id == id })
         return try modelContext.fetch(descriptor).first
+    }
+}
+
+enum QARepositoryError: Error, CustomStringConvertible {
+    case meetingNotFound
+    case threadNotFound
+
+    var description: String {
+        switch self {
+        case .meetingNotFound: "Meeting not found."
+        case .threadNotFound: "Chat thread not found."
+        }
     }
 }

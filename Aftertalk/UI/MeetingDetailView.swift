@@ -2,12 +2,19 @@ import SwiftUI
 
 struct MeetingDetailView: View {
     let meeting: Meeting
+    let qaContext: QAContext?
     @State private var selectedTab: Tab = .summary
 
     enum Tab: String, CaseIterable, Identifiable {
         case summary = "Summary"
         case transcript = "Transcript"
+        case chat = "Chat"
         var id: String { rawValue }
+    }
+
+    init(meeting: Meeting, qaContext: QAContext? = nil) {
+        self.meeting = meeting
+        self.qaContext = qaContext
     }
 
     var body: some View {
@@ -21,17 +28,21 @@ struct MeetingDetailView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
 
-            ScrollView {
-                Group {
-                    switch selectedTab {
-                    case .summary:
-                        summaryView
-                    case .transcript:
-                        transcriptView
+            switch selectedTab {
+            case .summary, .transcript:
+                ScrollView {
+                    Group {
+                        switch selectedTab {
+                        case .summary: summaryView
+                        case .transcript: transcriptView
+                        case .chat: EmptyView()
+                        }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+            case .chat:
+                chatView
             }
         }
         .navigationTitle(meeting.title)
@@ -55,6 +66,24 @@ struct MeetingDetailView: View {
                 "Summary not generated yet",
                 systemImage: "doc.text.magnifyingglass",
                 description: Text("Foundation Models was unavailable or the recording was too short.")
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var chatView: some View {
+        if let ctx = qaContext {
+            ChatThreadView(
+                meeting: meeting,
+                orchestrator: ctx.orchestrator,
+                questionASR: ctx.questionASR,
+                repository: ctx.repository
+            )
+        } else {
+            ContentUnavailableView(
+                "Chat unavailable",
+                systemImage: "exclamationmark.bubble",
+                description: Text("The Q&A pipeline failed to initialize. Foundation Models may be unavailable on this device.")
             )
         }
     }
