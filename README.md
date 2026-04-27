@@ -2,120 +2,165 @@
 
 > Your meeting, captured and conversational. Fully offline. Nothing leaves the device.
 
-<!-- HERO_GIF: replaced day 7 with a 10s gif from the demo recording -->
+A personal experiment in fully on-device meeting intelligence for iOS 26+. Records a meeting in airplane mode, transcribes locally, generates a structured summary, and lets you ask follow-up questions by voice — every model runs on the iPhone's Neural Engine, no network, no cloud. MIT licensed.
 
-Aftertalk is a personal experiment in fully on-device meeting intelligence. Built in 7 days during finals week for iOS 18+ on iPhone Air and iPhone 17 Pro Max. Open source, MIT licensed.
+## Status (Day 3 of 7)
 
-<!-- BUILD_STATUS_BADGE -->
+End-to-end loop is live on hardware: record → on-device transcript → structured summary → hold-to-talk voice Q&A with grounded streaming answers. Measured on iPhone Air: **TTFT 104 ms, total Q&A turn 1,440 ms.**
 
-## Day 1 status (2026-04-27)
-
-Streaming ASR is live on real hardware (iPhone Air, airplane mode). Tap record, speak, watch the transcript update word-by-word in real time. Multi-session stable: record/stop/record again works without state corruption.
-
-What ships today:
-- AVAudioEngine mic capture with explicit 48kHz → 16kHz Float32 conversion
-- Moonshine `tinyStreaming` wrapped behind an `ASRService` protocol so the WhisperKit fallback is a one-line swap
-- Per-session `Stream.start()` / `Stream.stop()` cycling on a single long-lived Stream (the only Moonshine pattern that doesn't leak ONNX runtime state across sessions)
-- DebugOverlay surfacing TTFT, sample/event counters, ASR active state, and start/stop/add-audio counters for on-device debugging without Console.app
-
-Day 2 lands the Foundation Models structured summary + gte-small embedding pipeline + sqlite-vec store.
-
-## Why
-Meeting note tools today either send your audio to a vendor's cloud, or skip transcription entirely and rely on you to summarize. Aftertalk runs the entire pipeline — ASR, summarization, RAG over multiple meetings, voice Q&A with neural TTS — on the phone, in airplane mode. The privacy claim is auditable: no `URLSession` import in production paths, runtime `NWPathMonitor` assertion, demo video records with airplane mode visible throughout.
-
-## What's inside
-
-<!-- COMPONENT_TABLE: filled day 7 with measured latency numbers -->
-| Layer | Model | Size | License | Latency |
-|---|---|---|---|---|
-| ASR | Moonshine tiny EN | TBD | MIT | TBD ms TTFT |
-| LLM | Apple Foundation Models | (system) | Apple | TBD tok/s |
-| Embeddings | gte-small | TBD | Apache-2 | TBD ms / vector |
-| Vector store | sqlite-vec | TBD | MIT | TBD ms / query |
-| TTS | Kokoro 82M (FluidAudio) | TBD | Apache-2 | TBD ms first-audio |
-| Diarization | Pyannote (FluidAudio) | TBD | MIT | TBD% accuracy |
-| VAD | TEN-VAD | TBD | Apache-2 | TBD ms / frame |
-| EoU | Pipecat SmartTurnV3 | TBD | MIT | TBD ms / inference |
+| Layer | Pick | Notes |
+|---|---|---|
+| ASR | Moonshine **medium-streaming-en** (245M, 6.65% WER, 303 MB) | Beats Whisper Large v3 on WER at a fraction of the size |
+| LLM | Apple Foundation Models (iOS 26) | 4096-token cap, ~30 tok/s on A18 |
+| Embeddings | gte-small Core ML, 384-dim | ~6 MB |
+| Vector store | SwiftData + sqlite-vec | One SQLite file, MATCH joins back to typed rows |
+| Summary | `@Generable MeetingSummary` (decisions / actions / topics / openQs) | Map-reduce over 7,500-char windows for long meetings |
+| Q&A | `QAOrchestrator` — retrieve + summary overview → snapshot stream → sentence detector → TTS | Grounding gate at cosine 0.40, max 6 spoken sentences |
+| TTS | `AVSpeechSynthesizer` (placeholder) | Kokoro 82M neural ships Day 4 |
 
 ## Architecture
 
-<!-- MERMAID_DIAGRAM: filled day 7 -->
-See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the full pipeline, data model, token + latency budgets, and audio session pitfall checklist.
+```mermaid
+flowchart LR
+    mic([Mic 48 kHz]) -->|float32| asr[Moonshine streaming ASR]
+    asr -->|deltas| ui1[Live transcript]
+    asr -->|finalized| chunker[ChunkIndexer<br/>30 s windows]
+    chunker --> embed[gte-small Core ML]
+    embed --> store[(SwiftData<br/>sqlite-vec)]
+    chunker --> sumgen[Foundation Models<br/>@Generable MeetingSummary]
+    sumgen --> store
 
-## Performance (iPhone 17 Pro Max)
-<!-- PERF_NUMBERS: filled day 7 from MetricKit run -->
-- Time-to-first-spoken-word: TBD ms (brief target: <3000 ms)
-- ASR TTFT: TBD ms
-- Summary latency for 30-min meeting: TBD s
-- Memory peak: TBD MB
-- Battery delta over 40-min session: TBD %
-- Thermal state: stayed `.fair` or below
+    user([Hold to ask]) --> asrq[Moonshine ASR]
+    asrq --> retr[Hierarchical Retriever]
+    store --> retr
+    retr --> packer[ContextPacker<br/>2,400-token budget]
+    sumgen -. overview .-> packer
+    packer --> llm[Foundation Models<br/>streaming]
+    llm --> sb[SentenceBoundaryDetector]
+    sb --> tts[TTS]
+    sb --> ui2[Live answer bubble]
+```
 
-Profile chart: [`perf/30min-meeting-chart.png`](./perf/30min-meeting-chart.png)
+### Q&A turn — sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant ASR as Moonshine ASR
+    participant Q as QAOrchestrator
+    participant R as HierarchicalRetriever
+    participant S as SwiftData + sqlite-vec
+    participant L as Foundation Models
+    participant T as TTS
+
+    U->>ASR: hold-to-talk audio
+    ASR-->>Q: transcribed question
+    Q->>R: retrieve(question, meeting, topK=8)
+    R->>S: cosine search on chunk embeddings
+    S-->>R: top chunks
+    R-->>Q: hits + topScore
+    alt topScore < 0.40
+        Q->>T: speak("I don't have that…")
+    else grounded
+        Q->>Q: build prompt = system + overview + chunks + question
+        Q->>L: streamResponse
+        loop snapshot stream
+            L-->>Q: snapshot text
+            Q->>Q: SentenceBoundaryDetector.feed
+            Q->>T: speak(sentence) until cap=6
+            Q-->>U: live bubble update
+        end
+    end
+```
+
+### Component layout
+
+```mermaid
+classDiagram
+    class ASRService {
+        <<protocol>>
+        +warm()
+        +start()
+        +append(samples)
+        +stop()
+        +deltas()
+    }
+    class LLMService {
+        <<protocol>>
+        +generateSummary(transcript)
+        +streamSummary(transcript)
+    }
+    class TTSService {
+        <<protocol>>
+        +speak(text)
+        +stop()
+    }
+    class Retriever {
+        <<protocol>>
+        +retrieve(query)
+    }
+
+    ASRService <|.. MoonshineStreamer
+    LLMService <|.. FoundationModelsSummaryGenerator
+    TTSService <|.. AVSpeechTTSService
+    Retriever <|.. HierarchicalRetriever
+
+    QAOrchestrator --> Retriever
+    QAOrchestrator --> TTSService
+    QAOrchestrator ..> LanguageModelSession
+
+    MeetingProcessingPipeline --> LLMService
+    MeetingProcessingPipeline --> EmbeddingService
+    MeetingProcessingPipeline --> MeetingsRepository
+```
+
+## Day-by-day shipped
+
+**Day 0 — Bootstrap.** Xcode project, SPM dependencies, PRD + architecture docs, daily briefs, repo to GitHub.
+
+**Day 1 — Live ASR.** AVAudioEngine 48 → 16 kHz capture, Moonshine streaming wrapper with single-warm + per-utterance start/stop, debug overlay surfacing TTFT and event counters.
+
+**Day 2 — Summary + RAG.** SwiftData model (Meeting, TranscriptChunk, SpeakerLabel, MeetingSummaryRecord). gte-small Core ML embedding service. sqlite-vec vector store. `@Generable MeetingSummary` over Foundation Models. Chunker with 30 s windows.
+
+**Day 3 — Voice Q&A loop.** Hold-to-talk Moonshine question ASR. Hierarchical retriever. ContextPacker with explicit 2,400-token budget. Grounding gate at cosine 0.40. QAOrchestrator with snapshot streaming → SentenceBoundaryDetector → TTS prefetch. Per-meeting chat thread (ChatThread + ChatMessage). Map-reduce summarization for long meetings (>7,500 chars). Moonshine swap to medium-streaming for 1.2 pp WER improvement. Q&A summary-injection so broad questions read the index instead of guessing from snippets.
 
 ## Privacy
 
-This is the entire pitch. Three layers of audit:
-1. **Static**: zero `URLSession`, `URLRequest`, or HTTP calls in production code path. Verify: `git grep -n "URLSession\|URLRequest\|http://\|https://" Aftertalk/`
-2. **Runtime**: `NWPathMonitor` assertion in `AppDelegate` fires if any interface is up while a meeting is recording.
-3. **Visual**: airplane badge in app chrome turns green only when all interfaces are down. Visible throughout the demo video.
+Three layers of audit:
 
-Specific commits that landed each privacy invariant:
-<!-- PRIVACY_COMMITS: filled day 7 -->
-- `<sha>` introduced `NWPathMonitor` runtime assertion
-- `<sha>` removed final third-party SDK that opened a network socket
-- `<sha>` set `NSAppTransportSecurity.NSAllowsArbitraryLoads = false` and removed exception domains
+1. **Static** — `git grep -n "URLSession\|URLRequest\|http://\|https://" Aftertalk/` returns zero in production paths.
+2. **Runtime** — `NWPathMonitor` assertion fires if any interface is up while recording.
+3. **Visual** — airplane badge in app chrome turns green only when all interfaces are down.
 
 ## Build
 
 ```bash
 git clone https://github.com/theaayushstha1/aftertalk
 cd aftertalk
+xcodegen generate
 open Aftertalk.xcodeproj
-# Select your iPhone, build, run.
-# First launch downloads ~150MB of models from a public mirror to ~/Library/Application Support/Aftertalk/Models/
-# After that, the app works fully offline.
+# Plug in iPhone, select as destination, Cmd+R.
 ```
 
-Requirements:
-- Xcode 16+
-- iOS 18+ device (iPhone 14+ recommended for Foundation Models perf)
-- Apple Developer account on the signing team
+Models (Moonshine `.ort` files, ~303 MB) are gitignored; populate `Aftertalk/Models/moonshine-medium-streaming-en/` per `Aftertalk/Models/README.md`.
 
-## Stretch goals shipped
+Requirements: Xcode 17+, iOS 26+ device, Apple Developer signing.
 
-- [x] **Speaker diarization** — FluidAudio Pyannote Core ML, ~80% accuracy on iPhone mic
-- [x] **Streaming Q&A** — sentence-boundary chunking → Kokoro TTS prefetch, ~750ms TTFSW
-- [x] **Cross-meeting memory** — hierarchical 3-layer retrieval, global chat thread
-- [x] **Neural TTS** — Kokoro 82M ANE-optimized, single-take voice
-- [x] **Power profile** — MetricKit dump + matplotlib chart in `perf/`
+## Roadmap
 
-Bonus:
-- [x] Senior-grade VAD + barge-in (TEN-VAD + Pipecat SmartTurnV3 EoU)
-- [x] Per-meeting + global chat threads with citations
-
-## Tradeoffs
-
-A few honest calls that didn't make it into v1:
-- **iPhone Air is ~30% slower than 17 Pro Max** on Foundation Models throughput. We tuned the budget on Air; demo video uses 17 Pro Max for tightest TTFSW.
-- **Kokoro voice is single-language English.** Multi-language voices are 4x bigger; out of scope for one week.
-- **Pyannote on iPhone mic** holds ~80% diarization accuracy. >2 speakers degrades visibly. Demo restricted to 2-speaker recordings.
-- **Foundation Models 4K cap** forces hierarchical RAG. Long meetings (>30min) compress less faithfully — we'd add map-reduce summarization with another two weeks.
-
-## What I'd build with another two weeks
-
-1. **Map-reduce summarization** for >30min meetings. Current single-pass approach degrades on long context.
-2. **On-device speaker enrollment**. Right now speakers are auto-labeled "Speaker 1, 2." Enrollment would let you say "this is Sara" and have her recognized in future meetings.
-3. **A Live Activity** with a recording timer + waveform. Brings the airplane-mode privacy promise into the system UI.
+- [x] Day 0 — Bootstrap
+- [x] Day 1 — Streaming ASR on device
+- [x] Day 2 — Summary + RAG
+- [x] Day 3 — Voice Q&A loop with grounding gate
+- [ ] Day 4 — Pyannote diarization + Kokoro neural TTS
+- [ ] Day 5 — Cross-meeting global chat + TEN-VAD barge-in
+- [ ] Day 6 — Polish + MetricKit profiling
+- [ ] Day 7 — Demo video + submission
 
 ## Acknowledgments
 
-- Moonshine ASR — Useful Sensors
-- FluidAudio (diarization + Kokoro TTS) — Fluid Inference
-- TEN-VAD — Tencent
-- Pipecat SmartTurn — Daily
-- gte-small embeddings — Alibaba DAMO
-- sqlite-vec — Alex Garcia
+Moonshine ASR — Useful Sensors. FluidAudio — Fluid Inference. gte-small — Alibaba DAMO. sqlite-vec — Alex Garcia.
 
 ## License
 
