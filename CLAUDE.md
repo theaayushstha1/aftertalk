@@ -3,11 +3,11 @@
 You are working on **Aftertalk**, a fully on-device iOS meeting recording + voice Q&A app. This is a 7-day take-home for **AirCaps (YC F25)** that gates an in-person paid work trial. Submission deadline: **Sun May 3, 2026, EOD ET**.
 
 ## What this app does
-Records a meeting on iPhone in airplane mode → streams ASR locally → generates a structured summary on-device → user holds a button, asks a question by voice → app retrieves from the meeting (or across all meetings) and answers by voice. No network calls, ever. iOS 18+, Swift 6, primary devices iPhone Air + iPhone 17 Pro Max.
+Records a meeting on iPhone in airplane mode → streams ASR locally → generates a structured summary on-device → user holds a button, asks a question by voice → app retrieves from the meeting (or across all meetings) and answers by voice. No network calls, ever. iOS 26+, Swift 6, primary devices iPhone Air + iPhone 17 Pro Max.
 
 ## Hard invariants (do not violate)
 1. **No network calls in production code paths.** No `URLSession`, no `URLRequest`, no third-party SDK that phones home. Privacy is the entire pitch.
-2. **iOS 18+ only.** Foundation Models requires this. Do not add iOS 17 fallbacks.
+2. **iOS 26+ only.** Foundation Models was introduced at WWDC25 and ships with iOS 26. Do not add iOS 18 fallbacks.
 3. **Foundation Models context cap is 4096 tokens.** Always budget: ~250 system + ~50 question + ≤2400 context + ~1200 generation. Use `Session.tokenCount(_:)` (iOS 26.4+) to verify.
 4. **Audio session order is sacred.** `.playAndRecord` category → `.voiceChat` mode → `setPrefersEchoCancelledInput(true)` → activate. Wrong order silently disables AEC.
 5. **Sample rate conversion is explicit.** Mic 48kHz → ASR 16kHz → Kokoro 24kHz → speaker 48kHz. Never rely on implicit graph conversion.

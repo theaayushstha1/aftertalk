@@ -1,0 +1,25 @@
+Sara: Morning everyone. Let's keep this tight, fifteen minutes max.
+Mark: Sounds good. I'll go first. I shipped the new onboarding flow last night and the activation rate jumped from 41 percent to 58 percent on the test cohort.
+Sara: That's a huge jump. Nice work. Is the test cohort big enough to call it conclusive?
+Mark: Five thousand users over four days. I'd call it directional but I want another week before we promote it.
+Sara: Agreed. Let's keep it as a 50-50 split for one more week and re-review next Tuesday.
+Mark: Done. I'll send a calendar invite.
+Sara: Next thing: the design role. We interviewed four candidates last week. I want to make Sara Patel an offer today. She's the strongest by a clear margin and her portfolio is exactly the visual direction we've been chasing.
+Mark: I support it. What's the package?
+Sara: One twenty base, point three percent equity, four-year vest with one-year cliff. Same as the last offer we made.
+Mark: Works for me. When can she start?
+Sara: She wants two weeks to wrap up her current contract, so May 12th if she accepts.
+Mark: Perfect. Decision made then: hire Sara for the design role, send the offer today.
+Sara: Yes. I'll draft it after this call. Mark, can you handle the equity grant paperwork?
+Mark: I'll get it to legal by end of day Wednesday.
+Sara: Great. Last topic: the API rewrite. We're three weeks in and the latency numbers are not improving. The new endpoint is actually slower on the p99 by twelve percent.
+Mark: I dug into that yesterday. The bottleneck is the new auth middleware doing two extra database round-trips per request.
+Sara: Can we batch those?
+Mark: I think so but it's a non-trivial refactor. Maybe a week of work.
+Sara: Open question for me is whether the rewrite is worth continuing or if we should revert and accept the legacy endpoint for another quarter.
+Mark: Let me run a more careful profile this week and bring numbers to next standup.
+Sara: Action item: Mark to profile the new endpoint and present a revert-or-continue recommendation by Friday.
+Mark: Got it.
+Sara: Anything else?
+Mark: Nope, we're under fifteen.
+Sara: Perfect. Let's go.

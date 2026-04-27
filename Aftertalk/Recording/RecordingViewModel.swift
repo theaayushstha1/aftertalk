@@ -20,6 +20,8 @@ final class RecordingViewModel {
     var asrStarts: Int = 0
     var asrStops: Int = 0
 
+    var onSessionEnded: (@MainActor (_ transcript: String, _ durationSeconds: Double) -> Void)?
+
     private let log = Logger(subsystem: "com.theaayushstha.aftertalk", category: "VM")
     private let capture = AudioCaptureService()
     private let streamer: MoonshineStreamer
@@ -102,11 +104,20 @@ final class RecordingViewModel {
     }
 
     private func stop() async {
+        let endedAt = ContinuousClock.now
+        let duration = startMonotonic.map { Double($0.duration(to: endedAt).aftertalkMillis) / 1000.0 } ?? 0
         capture.stop()
         await streamer.stop()
         await AudioSessionManager.shared.deactivate()
+        // Brief yield so any final LineCompleted delta queued on the AsyncStream
+        // has a chance to apply before we hand the transcript to the pipeline.
+        try? await Task.sleep(for: .milliseconds(150))
+        let captured = transcript
         // Do NOT cancel deltaTask/diagTask — they're long-lived consumers.
         isRecording = false
+        if !captured.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            onSessionEnded?(captured, duration)
+        }
     }
 
     private func rollback() async {

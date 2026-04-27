@@ -2,7 +2,7 @@ name: Aftertalk
 options:
   bundleIdPrefix: com.theaayushstha
   deploymentTarget:
-    iOS: "18.0"
+    iOS: "26.0"
   createIntermediateGroups: true
   groupSortPosition: top
   generateEmptyDirectories: false
@@ -17,7 +17,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: "YES"
     GENERATE_INFOPLIST_FILE: "YES"
-    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
 
 packages:
   Moonshine:

@@ -8,38 +8,70 @@
 
 /* Begin PBXBuildFile section */
 		082623100296B723A089A5B8 /* Models in Resources */ = {isa = PBXBuildFile; fileRef = A71B097C3BA077C23E2EEDCD /* Models */; };
+		0D00C506B7ADC6656BA7E7AF /* SummaryGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FD391B1C081F34FA027701 /* SummaryGenerator.swift */; };
 		12ABAA6487034156B64637B9 /* PerfMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5682160854DF68EED3EC9F31 /* PerfMonitor.swift */; };
 		1B4DAC95996E0F26EE9DA080 /* MoonshineStreamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7938E34AB08544C4721C38EC /* MoonshineStreamer.swift */; };
+		1B574DF9C5EB6487440F8193 /* MeetingProcessingPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 207DC58B8313D5E917FC61DD /* MeetingProcessingPipeline.swift */; };
+		1CCAE15EFC6F2081AE3ABCAD /* MeetingsRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21439AE268E8977B668ABE10 /* MeetingsRepository.swift */; };
+		1ECD03C982A0A7CC37390123 /* ChunkIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12CE4DE71780FBF89F329ECF /* ChunkIndexer.swift */; };
 		310FCE3053C44A06CA540486 /* PrivacyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99862B2E5CBEF50199E2EB90 /* PrivacyMonitor.swift */; };
+		34114B893F140710EA8BE803 /* MeetingsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97DA4F3A5B7929B96475F1C /* MeetingsListView.swift */; };
 		4B7876DB7DC4BD31E4809923 /* AudioSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD030A4E86E5D2FEAD786508 /* AudioSessionManager.swift */; };
 		4F6A4CC51B8108497C1EDB8D /* DebugOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E66BD314C64CDF3E3EF026A /* DebugOverlay.swift */; };
+		5B82CF57E29C433EB2E00959 /* EmbeddingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45B8ABF908DE5C6BF3378C9C /* EmbeddingService.swift */; };
+		679EFAAFD1F4515F00908D75 /* ModelContainer+Aftertalk.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FF205284A7B13C43BF3011C /* ModelContainer+Aftertalk.swift */; };
+		7036F5A3AAE2FAD466CB6F75 /* MeetingDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02631AEB240C134B4DDD9B11 /* MeetingDetailView.swift */; };
 		7D25667877418A377369DEFB /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 571D7FE0A3A12C1C2A90DFE2 /* RootView.swift */; };
+		8A70F978DD4445F2FDBB1463 /* MeetingSummaryRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEADFEB1B811F46CB0A86D15 /* MeetingSummaryRecord.swift */; };
 		8C0A3520E2A45F2F48379ACE /* RecordButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 304F5E9E9D51B8C815E2D426 /* RecordButton.swift */; };
+		91E1D87C82B8B5F5759A57D5 /* ChatThread.swift in Sources */ = {isa = PBXBuildFile; fileRef = B474E30D85796D1903009400 /* ChatThread.swift */; };
 		9BBA5D8694E47ED0B3EBEB0E /* ModelLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B1B0BEC1102036E81A4290D /* ModelLocator.swift */; };
+		A60009ABAB0A6E5608A35A9D /* MeetingSummaryEmbedding.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6063AA672D8496187E4B91E /* MeetingSummaryEmbedding.swift */; };
 		AE80FB8F2830D07E921AE5A9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A3E172A92CE552CA187F610F /* Assets.xcassets */; };
+		B7D8135A1741CA52EE238534 /* VectorStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D33A9372A275187D6009C3F /* VectorStore.swift */; };
+		BC77B2DE083E912F3AE8F83F /* MeetingSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F88D7B327555BB7CD4DC1F1 /* MeetingSummary.swift */; };
+		C86AA3217348D7E7FF23F765 /* SpeakerLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E001CBAE0B65AD79BBFBD529 /* SpeakerLabel.swift */; };
 		CA8D590972EFCBF8B21505DC /* PrivacyBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F02051A737B2B63781E21A1D /* PrivacyBadge.swift */; };
 		D89F2266CDA1F8D6FDC3BA12 /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F5C57518CD7B9882CEA987 /* AudioCaptureService.swift */; };
+		D8F48C67AD22840B58605D3E /* TranscriptChunk.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6826ECA346535661384A4E01 /* TranscriptChunk.swift */; };
 		DF66AE7FE14A561803682DDC /* AftertalkApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23238DEF6909E2FD5F72A8D4 /* AftertalkApp.swift */; };
+		E9D5B71B4124E0ED927EB66E /* Meeting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9451D0F32DEA17F1B90CBDD7 /* Meeting.swift */; };
 		ED479A8179B605CA8725F168 /* MoonshineVoice in Frameworks */ = {isa = PBXBuildFile; productRef = 58A06F94C73C33F95A02D67F /* MoonshineVoice */; };
 		FB6582F6CBFAC7698F098696 /* RecordingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F7F2DD575356414495ABE23 /* RecordingViewModel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		02631AEB240C134B4DDD9B11 /* MeetingDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingDetailView.swift; sourceTree = "<group>"; };
+		12CE4DE71780FBF89F329ECF /* ChunkIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChunkIndexer.swift; sourceTree = "<group>"; };
 		1B1B0BEC1102036E81A4290D /* ModelLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelLocator.swift; sourceTree = "<group>"; };
+		207DC58B8313D5E917FC61DD /* MeetingProcessingPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingProcessingPipeline.swift; sourceTree = "<group>"; };
+		21439AE268E8977B668ABE10 /* MeetingsRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsRepository.swift; sourceTree = "<group>"; };
 		23238DEF6909E2FD5F72A8D4 /* AftertalkApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AftertalkApp.swift; sourceTree = "<group>"; };
 		304F5E9E9D51B8C815E2D426 /* RecordButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordButton.swift; sourceTree = "<group>"; };
+		45B8ABF908DE5C6BF3378C9C /* EmbeddingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddingService.swift; sourceTree = "<group>"; };
+		4D33A9372A275187D6009C3F /* VectorStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorStore.swift; sourceTree = "<group>"; };
+		4F88D7B327555BB7CD4DC1F1 /* MeetingSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSummary.swift; sourceTree = "<group>"; };
 		52F5C57518CD7B9882CEA987 /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
 		5682160854DF68EED3EC9F31 /* PerfMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfMonitor.swift; sourceTree = "<group>"; };
 		571D7FE0A3A12C1C2A90DFE2 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		6826ECA346535661384A4E01 /* TranscriptChunk.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptChunk.swift; sourceTree = "<group>"; };
 		7938E34AB08544C4721C38EC /* MoonshineStreamer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoonshineStreamer.swift; sourceTree = "<group>"; };
 		7E66BD314C64CDF3E3EF026A /* DebugOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugOverlay.swift; sourceTree = "<group>"; };
 		7F7F2DD575356414495ABE23 /* RecordingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingViewModel.swift; sourceTree = "<group>"; };
+		7FF205284A7B13C43BF3011C /* ModelContainer+Aftertalk.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ModelContainer+Aftertalk.swift"; sourceTree = "<group>"; };
+		9451D0F32DEA17F1B90CBDD7 /* Meeting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Meeting.swift; sourceTree = "<group>"; };
+		96FD391B1C081F34FA027701 /* SummaryGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryGenerator.swift; sourceTree = "<group>"; };
 		99862B2E5CBEF50199E2EB90 /* PrivacyMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyMonitor.swift; sourceTree = "<group>"; };
 		A3E172A92CE552CA187F610F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		A462430E8BA1CA4361A61B3B /* Aftertalk.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Aftertalk.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A462430E8BA1CA4361A61B3B /* Aftertalk.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Aftertalk.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A71B097C3BA077C23E2EEDCD /* Models */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Models; path = Aftertalk/Models; sourceTree = SOURCE_ROOT; };
+		B474E30D85796D1903009400 /* ChatThread.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatThread.swift; sourceTree = "<group>"; };
+		B97DA4F3A5B7929B96475F1C /* MeetingsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsListView.swift; sourceTree = "<group>"; };
 		BD030A4E86E5D2FEAD786508 /* AudioSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionManager.swift; sourceTree = "<group>"; };
+		D6063AA672D8496187E4B91E /* MeetingSummaryEmbedding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSummaryEmbedding.swift; sourceTree = "<group>"; };
 		D6CD3F62BBAA845BDEBEEBA6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		DEADFEB1B811F46CB0A86D15 /* MeetingSummaryRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSummaryRecord.swift; sourceTree = "<group>"; };
+		E001CBAE0B65AD79BBFBD529 /* SpeakerLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerLabel.swift; sourceTree = "<group>"; };
 		F02051A737B2B63781E21A1D /* PrivacyBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyBadge.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -70,8 +102,11 @@
 			isa = PBXGroup;
 			children = (
 				447C7B618C5550D18CD6C654 /* App */,
+				13061C678BF5B8F6B505EC5E /* Persistence */,
 				9ABCCDC685EEB1A927807E01 /* Profiling */,
 				02EC46C652AA5A11C5720385 /* Recording */,
+				1F0A7AFB15D586792796A0AA /* Retrieval */,
+				3D0B21D7DD7B5ED9A09C1A3A /* Summary */,
 				1EE1F2CF74504378C7425F75 /* TTS */,
 				B97A192ADA62F9B50A55D0DB /* UI */,
 				A3E172A92CE552CA187F610F /* Assets.xcassets */,
@@ -81,12 +116,55 @@
 			path = Aftertalk;
 			sourceTree = "<group>";
 		};
+		13061C678BF5B8F6B505EC5E /* Persistence */ = {
+			isa = PBXGroup;
+			children = (
+				1CE116608722FE06C09F7A05 /* Models */,
+				21439AE268E8977B668ABE10 /* MeetingsRepository.swift */,
+				7FF205284A7B13C43BF3011C /* ModelContainer+Aftertalk.swift */,
+			);
+			path = Persistence;
+			sourceTree = "<group>";
+		};
+		1CE116608722FE06C09F7A05 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				B474E30D85796D1903009400 /* ChatThread.swift */,
+				9451D0F32DEA17F1B90CBDD7 /* Meeting.swift */,
+				D6063AA672D8496187E4B91E /* MeetingSummaryEmbedding.swift */,
+				DEADFEB1B811F46CB0A86D15 /* MeetingSummaryRecord.swift */,
+				E001CBAE0B65AD79BBFBD529 /* SpeakerLabel.swift */,
+				6826ECA346535661384A4E01 /* TranscriptChunk.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
 		1EE1F2CF74504378C7425F75 /* TTS */ = {
 			isa = PBXGroup;
 			children = (
 				BD030A4E86E5D2FEAD786508 /* AudioSessionManager.swift */,
 			);
 			path = TTS;
+			sourceTree = "<group>";
+		};
+		1F0A7AFB15D586792796A0AA /* Retrieval */ = {
+			isa = PBXGroup;
+			children = (
+				45B8ABF908DE5C6BF3378C9C /* EmbeddingService.swift */,
+				4D33A9372A275187D6009C3F /* VectorStore.swift */,
+			);
+			path = Retrieval;
+			sourceTree = "<group>";
+		};
+		3D0B21D7DD7B5ED9A09C1A3A /* Summary */ = {
+			isa = PBXGroup;
+			children = (
+				12CE4DE71780FBF89F329ECF /* ChunkIndexer.swift */,
+				207DC58B8313D5E917FC61DD /* MeetingProcessingPipeline.swift */,
+				4F88D7B327555BB7CD4DC1F1 /* MeetingSummary.swift */,
+				96FD391B1C081F34FA027701 /* SummaryGenerator.swift */,
+			);
+			path = Summary;
 			sourceTree = "<group>";
 		};
 		447C7B618C5550D18CD6C654 /* App */ = {
@@ -119,6 +197,8 @@
 			isa = PBXGroup;
 			children = (
 				7E66BD314C64CDF3E3EF026A /* DebugOverlay.swift */,
+				02631AEB240C134B4DDD9B11 /* MeetingDetailView.swift */,
+				B97DA4F3A5B7929B96475F1C /* MeetingsListView.swift */,
 				F02051A737B2B63781E21A1D /* PrivacyBadge.swift */,
 				304F5E9E9D51B8C815E2D426 /* RecordButton.swift */,
 			);
@@ -166,6 +246,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					7D1D73C1B749A0E316DF4E0E = {
+						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -212,7 +293,19 @@
 				DF66AE7FE14A561803682DDC /* AftertalkApp.swift in Sources */,
 				D89F2266CDA1F8D6FDC3BA12 /* AudioCaptureService.swift in Sources */,
 				4B7876DB7DC4BD31E4809923 /* AudioSessionManager.swift in Sources */,
+				91E1D87C82B8B5F5759A57D5 /* ChatThread.swift in Sources */,
+				1ECD03C982A0A7CC37390123 /* ChunkIndexer.swift in Sources */,
 				4F6A4CC51B8108497C1EDB8D /* DebugOverlay.swift in Sources */,
+				5B82CF57E29C433EB2E00959 /* EmbeddingService.swift in Sources */,
+				E9D5B71B4124E0ED927EB66E /* Meeting.swift in Sources */,
+				7036F5A3AAE2FAD466CB6F75 /* MeetingDetailView.swift in Sources */,
+				1B574DF9C5EB6487440F8193 /* MeetingProcessingPipeline.swift in Sources */,
+				BC77B2DE083E912F3AE8F83F /* MeetingSummary.swift in Sources */,
+				A60009ABAB0A6E5608A35A9D /* MeetingSummaryEmbedding.swift in Sources */,
+				8A70F978DD4445F2FDBB1463 /* MeetingSummaryRecord.swift in Sources */,
+				34114B893F140710EA8BE803 /* MeetingsListView.swift in Sources */,
+				1CCAE15EFC6F2081AE3ABCAD /* MeetingsRepository.swift in Sources */,
+				679EFAAFD1F4515F00908D75 /* ModelContainer+Aftertalk.swift in Sources */,
 				9BBA5D8694E47ED0B3EBEB0E /* ModelLocator.swift in Sources */,
 				1B4DAC95996E0F26EE9DA080 /* MoonshineStreamer.swift in Sources */,
 				12ABAA6487034156B64637B9 /* PerfMonitor.swift in Sources */,
@@ -221,6 +314,10 @@
 				8C0A3520E2A45F2F48379ACE /* RecordButton.swift in Sources */,
 				FB6582F6CBFAC7698F098696 /* RecordingViewModel.swift in Sources */,
 				7D25667877418A377369DEFB /* RootView.swift in Sources */,
+				C86AA3217348D7E7FF23F765 /* SpeakerLabel.swift in Sources */,
+				0D00C506B7ADC6656BA7E7AF /* SummaryGenerator.swift in Sources */,
+				D8F48C67AD22840B58605D3E /* TranscriptChunk.swift in Sources */,
+				B7D8135A1741CA52EE238534 /* VectorStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -282,7 +379,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -302,7 +399,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = LPAWL44K53;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = Aftertalk/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -321,7 +417,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = LPAWL44K53;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = Aftertalk/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -384,7 +479,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

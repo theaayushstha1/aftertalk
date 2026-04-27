@@ -1,0 +1,15 @@
+{
+  "meeting": "test-meeting-1.txt",
+  "pairs": [
+    { "q": "What did Mark commit to by Friday?", "expectAnchor": "profile the new endpoint and present a revert-or-continue recommendation" },
+    { "q": "Who are we hiring for the design role?", "expectAnchor": "Sara Patel" },
+    { "q": "What was the activation rate before and after the new onboarding?", "expectAnchor": "41 percent to 58 percent" },
+    { "q": "What's the equity package for the design hire?", "expectAnchor": "point three percent equity" },
+    { "q": "Who handles the equity grant paperwork?", "expectAnchor": "Mark" },
+    { "q": "What's the open question about the API rewrite?", "expectAnchor": "revert and accept the legacy endpoint" },
+    { "q": "When does the new design hire start?", "expectAnchor": "May 12th" },
+    { "q": "How much slower is the new endpoint on p99?", "expectAnchor": "twelve percent" },
+    { "q": "What is the test cohort size for the onboarding test?", "expectAnchor": "Five thousand users" },
+    { "q": "When is the next onboarding review?", "expectAnchor": "next Tuesday" }
+  ]
+}

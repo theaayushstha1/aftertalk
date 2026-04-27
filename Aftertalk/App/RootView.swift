@@ -1,11 +1,31 @@
+import SwiftData
 import SwiftUI
 
 struct RootView: View {
-    @State private var recording = RecordingViewModel()
+    @Environment(\.modelContext) private var context
     @Environment(PrivacyMonitor.self) private var privacy
+
+    @State private var recording = RecordingViewModel()
+    @State private var pipeline: MeetingProcessingPipeline?
     @State private var debugVisible = true
 
     var body: some View {
+        TabView {
+            recordTab
+                .tabItem { Label("Record", systemImage: "mic.circle.fill") }
+
+            MeetingsListView()
+                .tabItem { Label("Meetings", systemImage: "list.bullet.rectangle.portrait") }
+        }
+        .task { configurePipeline() }
+        .alert("Microphone access required", isPresented: .constant(recording.permissionDenied)) {
+            Button("OK") { recording.permissionDenied = false }
+        } message: {
+            Text("Aftertalk needs your microphone to record meetings. Audio never leaves your device.")
+        }
+    }
+
+    private var recordTab: some View {
         ZStack {
             Color(.systemBackground).ignoresSafeArea()
 
@@ -13,6 +33,9 @@ struct RootView: View {
                 header
                 Spacer()
                 transcriptPane
+                if let stage = pipeline?.stage, stage != .idle {
+                    PipelineStatusView(stage: stage)
+                }
                 Spacer()
                 RecordButton(isRecording: recording.isRecording) {
                     Task { await recording.toggle() }
@@ -34,11 +57,6 @@ struct RootView: View {
                     withAnimation(.easeInOut(duration: 0.2)) { debugVisible.toggle() }
                 }
         )
-        .alert("Microphone access required", isPresented: .constant(recording.permissionDenied)) {
-            Button("OK") { recording.permissionDenied = false }
-        } message: {
-            Text("Aftertalk needs your microphone to record meetings. Audio never leaves your device.")
-        }
     }
 
     private var header: some View {
@@ -69,9 +87,70 @@ struct RootView: View {
             }
         }
     }
+
+    private func configurePipeline() {
+        guard pipeline == nil else { return }
+        let container = context.container
+        let repository = MeetingsRepository(modelContainer: container)
+        let llm = FoundationModelsSummaryGenerator()
+        let embeddings: any EmbeddingService
+        do {
+            embeddings = try NLContextualEmbeddingService()
+        } catch {
+            recording.lastError = "embedding: \(error)"
+            return
+        }
+        let p = MeetingProcessingPipeline(repository: repository, embeddings: embeddings, llm: llm)
+        pipeline = p
+        recording.onSessionEnded = { transcript, duration in
+            Task { @MainActor in
+                _ = await p.process(transcript: transcript, durationSeconds: duration)
+            }
+        }
+    }
+}
+
+private struct PipelineStatusView: View {
+    let stage: ProcessingStage
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+                .opacity(isWorking ? 1 : 0)
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 16)
+    }
+
+    private var isWorking: Bool {
+        switch stage {
+        case .idle, .done, .failed: false
+        default: true
+        }
+    }
+
+    private var label: String {
+        switch stage {
+        case .idle: ""
+        case .savingMeeting: "Saving meeting…"
+        case .chunking: "Chunking transcript…"
+        case .embedding(let p, let t): "Embedding chunks (\(p)/\(t))"
+        case .summarizing: "Generating summary…"
+        case .done(_, let ms): "Summary ready (\(Int(ms)) ms)"
+        case .failed(let why): "Failed: \(why)"
+        }
+    }
 }
 
 #Preview {
     RootView()
         .environment(PrivacyMonitor())
+        .modelContainer(AftertalkPersistence.makeContainer())
 }
