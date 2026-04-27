@@ -8,6 +8,18 @@ Aftertalk is a personal experiment in fully on-device meeting intelligence. Buil
 
 <!-- BUILD_STATUS_BADGE -->
 
+## Day 1 status (2026-04-27)
+
+Streaming ASR is live on real hardware (iPhone Air, airplane mode). Tap record, speak, watch the transcript update word-by-word in real time. Multi-session stable: record/stop/record again works without state corruption.
+
+What ships today:
+- AVAudioEngine mic capture with explicit 48kHz → 16kHz Float32 conversion
+- Moonshine `tinyStreaming` wrapped behind an `ASRService` protocol so the WhisperKit fallback is a one-line swap
+- Per-session `Stream.start()` / `Stream.stop()` cycling on a single long-lived Stream (the only Moonshine pattern that doesn't leak ONNX runtime state across sessions)
+- DebugOverlay surfacing TTFT, sample/event counters, ASR active state, and start/stop/add-audio counters for on-device debugging without Console.app
+
+Day 2 lands the Foundation Models structured summary + gte-small embedding pipeline + sqlite-vec store.
+
 ## Why
 Meeting note tools today either send your audio to a vendor's cloud, or skip transcription entirely and rely on you to summarize. Aftertalk runs the entire pipeline — ASR, summarization, RAG over multiple meetings, voice Q&A with neural TTS — on the phone, in airplane mode. The privacy claim is auditable: no `URLSession` import in production paths, runtime `NWPathMonitor` assertion, demo video records with airplane mode visible throughout.
 
