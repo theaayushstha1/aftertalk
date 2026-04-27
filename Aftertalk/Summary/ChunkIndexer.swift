@@ -35,6 +35,11 @@ struct ChunkIndexer {
         var orderIndex = 0
         while i < sentences.count {
             let end = min(i + maxSentencesPerChunk, sentences.count)
+            // After the first chunk, skip windows whose only content is the
+            // overlap from the previous chunk — otherwise a transcript whose
+            // length lands on an advance boundary emits a redundant tail
+            // chunk consisting of just the overlap sentence.
+            if i > 0 && (end - i) <= sentenceOverlap { break }
             let window = Array(sentences[i..<end])
             let text = window.joined(separator: " ")
             let startChar = startCharsBySentence[i]
