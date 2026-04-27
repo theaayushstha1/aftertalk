@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Aftertalk · Days 0–3</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  @page {
+    size: letter;
+    margin: 0.45in 0.7in;
+    background: #FAF8F4;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    background: #FAF8F4;
+    color: #2A2A2A;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 9.5pt;
+    line-height: 1.5;
+    font-weight: 400;
+    letter-spacing: 0.005em;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: inherit; text-decoration: none; }
+  a.link {
+    color: #6B5A3F;
+    border-bottom: 0.4pt solid #C4A77D;
+    padding-bottom: 0.3pt;
+  }
+  a.link:hover { color: #1A1A1A; }
+
+  .sha {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7.5pt;
+    letter-spacing: 0;
+    color: #6B5A3F;
+    background: #F0EAD9;
+    padding: 1pt 4pt;
+    border-radius: 2pt;
+    border: 0.3pt solid #DDD3BC;
+    text-decoration: none;
+  }
+  .sha:hover { background: #E6DDC3; }
+
+  /* --- Header --- */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-bottom: 9pt;
+    border-bottom: 0.4pt solid #D8D2C7;
+    margin-bottom: 14pt;
+  }
+  .brand {
+    font-family: 'Fraunces', serif;
+    font-size: 19pt;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    color: #1A1A1A;
+  }
+  .brand-meta {
+    text-align: right;
+  }
+  .brand-meta .top {
+    font-size: 7.5pt;
+    color: #7A7268;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  .brand-meta .repo {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7.5pt;
+    color: #6B5A3F;
+    margin-top: 2pt;
+    letter-spacing: 0;
+    border-bottom: 0.3pt solid #C4A77D;
+    padding-bottom: 0.3pt;
+  }
+
+  .velocity-row {
+    display: flex;
+    align-items: center;
+    gap: 8pt;
+    margin-bottom: 6pt;
+  }
+  .velocity-pill {
+    display: inline-block;
+    font-family: 'Inter', sans-serif;
+    font-size: 6.8pt;
+    font-weight: 700;
+    color: #3F5E3D;
+    background: #E5EDDC;
+    padding: 2pt 5.5pt;
+    border-radius: 8pt;
+    border: 0.4pt solid #C2D3B0;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* --- Title block --- */
+  .title-block {
+    margin-bottom: 14pt;
+    padding-left: 10pt;
+    border-left: 1.4pt solid #C4A77D;
+  }
+  .eyebrow {
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: #8A7F71;
+    font-weight: 600;
+    margin-bottom: 5pt;
+  }
+  .title {
+    font-family: 'Fraunces', serif;
+    font-size: 22pt;
+    font-weight: 400;
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+    color: #1A1A1A;
+    margin-bottom: 7pt;
+  }
+  .title em {
+    font-style: italic;
+    color: #5C5346;
+  }
+  .lede {
+    font-size: 10pt;
+    color: #4A4438;
+    line-height: 1.5;
+    max-width: 96%;
+  }
+
+  /* --- Index strip --- */
+  .index {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12pt;
+    padding: 9pt 0;
+    border-top: 0.4pt solid #D8D2C7;
+    border-bottom: 0.4pt solid #D8D2C7;
+    margin-bottom: 14pt;
+  }
+  .index-cell { font-size: 8pt; }
+  .index-num {
+    font-family: 'Fraunces', serif;
+    font-size: 9pt;
+    color: #8A7F71;
+    letter-spacing: 0.04em;
+    margin-bottom: 2pt;
+    font-weight: 500;
+  }
+  .index-label {
+    font-size: 8.5pt;
+    color: #2A2A2A;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  .index-sub {
+    font-size: 7.5pt;
+    color: #7A7268;
+    margin-top: 1.5pt;
+    font-weight: 400;
+  }
+
+  /* --- Body sections --- */
+  section { margin-bottom: 11pt; }
+
+  h2 {
+    font-family: 'Fraunces', serif;
+    font-size: 12pt;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: #1A1A1A;
+    margin-bottom: 5pt;
+  }
+  h2 .h2-meta {
+    font-family: 'Inter', sans-serif;
+    font-size: 7.5pt;
+    color: #8A7F71;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 500;
+    margin-left: 6pt;
+  }
+
+  p { margin-bottom: 5pt; }
+  p:last-child { margin-bottom: 0; }
+
+  .day-grid {
+    display: grid;
+    grid-template-columns: 60pt 1fr 78pt;
+    column-gap: 12pt;
+    row-gap: 7pt;
+    margin-top: 5pt;
+    align-items: start;
+  }
+  .day-tag {
+    font-family: 'Fraunces', serif;
+    font-size: 10pt;
+    font-weight: 500;
+    color: #5C5346;
+    letter-spacing: 0.01em;
+    padding-top: 0.5pt;
+  }
+  .day-tag span {
+    display: block;
+    font-family: 'Inter', sans-serif;
+    font-size: 7pt;
+    color: #8A7F71;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-top: 1pt;
+    font-weight: 500;
+  }
+  .day-body {
+    font-size: 9.5pt;
+    color: #2C2C2C;
+    line-height: 1.5;
+  }
+  .day-body strong { font-weight: 600; color: #1A1A1A; }
+  .day-shas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3pt;
+    padding-top: 1pt;
+  }
+
+  /* --- Metrics row --- */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8pt;
+    margin: 4pt 0 0 0;
+  }
+  .metric {
+    border: 0.4pt solid #D8D2C7;
+    border-radius: 3pt;
+    padding: 8pt 10pt;
+    background: #F5F1EA;
+  }
+  .metric-num {
+    font-family: 'Fraunces', serif;
+    font-size: 17pt;
+    font-weight: 500;
+    color: #1A1A1A;
+    letter-spacing: -0.025em;
+    line-height: 1;
+    margin-bottom: 2pt;
+  }
+  .metric-num small {
+    font-size: 8.5pt;
+    color: #7A7268;
+    margin-left: 1pt;
+    font-weight: 400;
+    letter-spacing: 0;
+  }
+  .metric-label {
+    font-size: 7pt;
+    color: #5C5346;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+  }
+
+  /* --- Resources strip --- */
+  .resources {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10pt;
+    padding: 9pt 0;
+    border-top: 0.4pt solid #D8D2C7;
+    border-bottom: 0.4pt solid #D8D2C7;
+    margin-top: 11pt;
+    margin-bottom: 9pt;
+  }
+  .res-cell { font-size: 8pt; }
+  .res-label {
+    font-size: 7pt;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #8A7F71;
+    font-weight: 600;
+    margin-bottom: 2pt;
+  }
+  .res-link {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7.5pt;
+    color: #6B5A3F;
+    border-bottom: 0.3pt solid #C4A77D;
+    padding-bottom: 0.3pt;
+    word-break: break-all;
+    line-height: 1.35;
+    display: inline;
+  }
+
+  /* --- Footer --- */
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-top: 7pt;
+    font-size: 7.5pt;
+    color: #7A7268;
+    letter-spacing: 0.02em;
+  }
+  .footer strong { color: #5C5346; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="brand">Aftertalk</div>
+  <div class="brand-meta">
+    <div class="top">Build Brief · April 26–27, 2026</div>
+    <a class="repo" href="https://github.com/theaayushstha1/aftertalk">github.com/theaayushstha1/aftertalk</a>
+  </div>
+</div>
+
+<div class="title-block">
+  <div class="velocity-row">
+    <span class="eyebrow" style="margin-bottom:0">A 7-day take-home</span>
+    <span class="velocity-pill">↑ Day 3 hit on Day 1 · 3× plan pace</span>
+  </div>
+  <h1 class="title">A meeting recorder that runs <em>entirely on the iPhone.</em></h1>
+  <p class="lede">You hit record. The phone listens, writes the transcript as people talk, and afterward hands you a clean summary of what was decided, who agreed to do what, and what was left open. Then you ask it questions out loud and it answers, also out loud — without ever touching the internet. The plan budgeted three days for this milestone. It shipped in one.</p>
+</div>
+
+<div class="index">
+  <div class="index-cell">
+    <div class="index-num">01</div>
+    <div class="index-label">Listen</div>
+    <div class="index-sub">Live on-device transcription</div>
+  </div>
+  <div class="index-cell">
+    <div class="index-num">02</div>
+    <div class="index-label">Summarize</div>
+    <div class="index-sub">Decisions, actions, topics</div>
+  </div>
+  <div class="index-cell">
+    <div class="index-num">03</div>
+    <div class="index-label">Answer</div>
+    <div class="index-sub">Voice Q&amp;A in airplane mode</div>
+  </div>
+  <div class="index-cell">
+    <div class="index-num">04</div>
+    <div class="index-label">Prove it</div>
+    <div class="index-sub">Three privacy audits, real numbers</div>
+  </div>
+</div>
+
+<section>
+  <h2>What shipped this week <span class="h2-meta">commit hashes link to GitHub</span></h2>
+  <div class="day-grid">
+
+    <div class="day-tag">Day 0<span>The starting line</span></div>
+    <div class="day-body">Set up the Xcode project, put the repo on GitHub, locked the plan, committed to the deadline. The week was scoped to seven days during finals — clarity over ambition.</div>
+    <div class="day-shas">
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/64863ae">64863ae</a>
+    </div>
+
+    <div class="day-tag">Day 1<span>Phone learns to listen</span></div>
+    <div class="day-body">Wired the iPhone microphone to a small speech model that runs on the device. From the moment someone starts speaking, words begin appearing on screen in about a <strong>tenth of a second</strong>. No cloud, no Apple Speech, no network calls.</div>
+    <div class="day-shas">
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/a3b4495">a3b4495</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/09b84e8">09b84e8</a>
+    </div>
+
+    <div class="day-tag">Day 2<span>Phone learns to summarize</span></div>
+    <div class="day-body">After a meeting ends, the phone reads its own transcript and writes a structured digest: topics covered, decisions made, action items with names attached, questions left open. Same chip in your pocket — no servers.</div>
+    <div class="day-shas">
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/35c4aee">35c4aee</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/b7c7421">b7c7421</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/8594665">8594665</a>
+    </div>
+
+    <div class="day-tag">Day 3<span>Phone learns to talk back</span></div>
+    <div class="day-body">Hold a button, ask a question by voice, and the phone answers out loud — pulling from the meeting it just heard. First spoken word in <strong>104 milliseconds</strong>. Full reply in under a second and a half. Still no internet.</div>
+    <div class="day-shas">
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/a0c6ba6">a0c6ba6</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/1efb5d6">1efb5d6</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/e0f5793">e0f5793</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/3e4c323">3e4c323</a>
+    </div>
+
+  </div>
+</section>
+
+<section>
+  <h2>The headline numbers</h2>
+  <div class="metrics">
+    <div class="metric">
+      <div class="metric-num">104<small>ms</small></div>
+      <div class="metric-label">First spoken word</div>
+    </div>
+    <div class="metric">
+      <div class="metric-num">1.44<small>s</small></div>
+      <div class="metric-label">Full Q&amp;A turn</div>
+    </div>
+    <div class="metric">
+      <div class="metric-num">310<small>mb</small></div>
+      <div class="metric-label">Total model size</div>
+    </div>
+    <div class="metric">
+      <div class="metric-num">0</div>
+      <div class="metric-label">Network requests</div>
+    </div>
+  </div>
+</section>
+
+<div class="resources">
+  <div class="res-cell">
+    <div class="res-label">Repo</div>
+    <a class="res-link" href="https://github.com/theaayushstha1/aftertalk">github.com/theaayushstha1/<br>aftertalk</a>
+  </div>
+  <div class="res-cell">
+    <div class="res-label">Architecture diagrams</div>
+    <a class="res-link" href="https://github.com/theaayushstha1/aftertalk/blob/main/README.md">README · mermaid · pipeline + Q&amp;A + classes</a>
+  </div>
+  <div class="res-cell">
+    <div class="res-label">Q&amp;A core</div>
+    <a class="res-link" href="https://github.com/theaayushstha1/aftertalk/blob/main/Aftertalk/QA/QAOrchestrator.swift">Aftertalk/QA/<br>QAOrchestrator.swift</a>
+  </div>
+  <div class="res-cell">
+    <div class="res-label">Retrieval</div>
+    <a class="res-link" href="https://github.com/theaayushstha1/aftertalk/blob/main/Aftertalk/Retrieval/HierarchicalRetriever.swift">Aftertalk/Retrieval/<br>HierarchicalRetriever.swift</a>
+  </div>
+</div>
+
+<div class="footer">
+  <div><strong>Aftertalk</strong> · A personal experiment in fully on-device meeting intelligence</div>
+  <div>iOS 26 · Built for AirCaps · MIT licensed</div>
+</div>
+
+</body>
+</html>
