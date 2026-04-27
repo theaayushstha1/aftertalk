@@ -20,6 +20,9 @@ final class RecordingViewModel {
     var asrStarts: Int = 0
     var asrStops: Int = 0
 
+    private var committedLines: [String] = []
+    private var activeLine: String = ""
+
     var onSessionEnded: (@MainActor (_ transcript: String, _ durationSeconds: Double) -> Void)?
 
     private let log = Logger(subsystem: "com.theaayushstha.aftertalk", category: "VM")
@@ -80,6 +83,8 @@ final class RecordingViewModel {
             startMonotonic = .now
             ttftMillis = nil
             transcript = ""
+            committedLines.removeAll()
+            activeLine = ""
             samplesIn = 0
             eventsIn = 0
             lastError = nil
@@ -109,9 +114,11 @@ final class RecordingViewModel {
         capture.stop()
         await streamer.stop()
         await AudioSessionManager.shared.deactivate()
-        // Brief yield so any final LineCompleted delta queued on the AsyncStream
-        // has a chance to apply before we hand the transcript to the pipeline.
-        try? await Task.sleep(for: .milliseconds(150))
+        // Moonshine fires a final LineCompleted from stream.stop() that still
+        // has to traverse the dispatch queue + AsyncStream + main-actor consumer
+        // before it lands in committedLines. 300ms gives that whole chain time
+        // to drain so we don't snapshot a half-built transcript.
+        try? await Task.sleep(for: .milliseconds(300))
         let captured = transcript
         // Do NOT cancel deltaTask/diagTask — they're long-lived consumers.
         isRecording = false
@@ -142,7 +149,19 @@ final class RecordingViewModel {
         if ttftMillis == nil, let start = startMonotonic, !delta.text.isEmpty {
             ttftMillis = start.millis(to: .now)
         }
-        transcript = delta.text
+        // Moonshine deltas are line-scoped: each event carries one sentence.
+        // Accumulate completed lines so the full meeting transcript is preserved.
+        if delta.isFinal {
+            let line = delta.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !line.isEmpty { committedLines.append(line) }
+            activeLine = ""
+        } else {
+            activeLine = delta.text
+        }
+        transcript = ([committedLines.joined(separator: " "), activeLine]
+            .filter { !$0.isEmpty }
+            .joined(separator: " "))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func applyDiag(_ d: ASRDiagnostics) {
