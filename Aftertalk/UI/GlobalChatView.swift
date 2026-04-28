@@ -274,7 +274,19 @@ struct GlobalChatView: View {
             do { try await Task.sleep(for: .seconds(6)) } catch { return }
             if Task.isCancelled { return }
             holding = false
-            await endHold(ctx: ctx)
+            // Substantive-speech gate — see ChatThreadView.autoRearmListen
+            // for the rationale. False barge-ins (cough, AirPods click,
+            // Kokoro tail bleed past AEC) used to auto-fire a junk question
+            // built from 6 s of room noise; we now require ≥ 2 tokens AND
+            // ≥ 8 chars before committing.
+            let heard = ctx.questionASR.liveTranscript
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let tokenCount = heard.split { $0.isWhitespace }.count
+            if tokenCount >= 2 && heard.count >= 8 {
+                await endHold(ctx: ctx)
+            } else {
+                _ = await ctx.questionASR.stop()
+            }
         }
         autoRearmTask = task
         await task.value

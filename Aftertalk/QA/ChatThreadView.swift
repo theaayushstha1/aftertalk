@@ -278,7 +278,24 @@ struct ChatThreadView: View {
             do { try await Task.sleep(for: .seconds(6)) } catch { return }
             if Task.isCancelled { return }
             holding = false
-            await endHold()
+            // Only auto-commit if we actually heard a real question. The
+            // barge-in energy gate misfires on coughs, drops, AirPods clicks,
+            // and Kokoro tail bleed past AEC — and ASR happily turns 6 s of
+            // silence into garbled non-empty text. Without this guard, a
+            // false barge-in (a) silences the in-flight answer mid-sentence
+            // and (b) auto-fires a junk question from room noise. We require
+            // ≥ 2 whitespace-separated tokens AND ≥ 8 trimmed chars before
+            // routing through endHold; below that we just stop the mic
+            // quietly and leave the user in idle with the "you interrupted"
+            // banner, so the next hold-to-ask starts clean.
+            let heard = questionASR.liveTranscript
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let tokenCount = heard.split { $0.isWhitespace }.count
+            if tokenCount >= 2 && heard.count >= 8 {
+                await endHold()
+            } else {
+                _ = await questionASR.stop()
+            }
         }
         autoRearmTask = task
         await task.value

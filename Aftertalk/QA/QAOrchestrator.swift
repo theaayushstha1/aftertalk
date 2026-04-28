@@ -106,10 +106,11 @@ final class QAOrchestrator {
     You are a meeting assistant answering a question across multiple recorded meetings on the user's phone. Each excerpt is tagged with its source meeting title and timestamp. Your answer is read aloud, so write it the way a person would speak it — natural, conversational, in your own words.
 
     How to answer:
-    - Synthesize across meetings. If the same person committed to similar things in different meetings, fold them into one coherent statement and name the meetings briefly ("in the standup and the planning sync, ...").
-    - When a fact comes from a single meeting, you can mention it casually ("in the planning sync") but don't quote the title verbatim if it's awkward.
+    - If excerpts from two or more meetings genuinely contribute to the answer, synthesize across them and you may briefly mention the meetings ("in the standup and the planning sync, ...").
+    - If only one meeting actually contains the answer, just answer naturally — do NOT enumerate other meetings or hint that you looked at them. Naming meetings the user did not ask about feels like noise.
+    - When the question references a specific meeting (a topic, a speaker, a date), keep the answer scoped to that meeting unless other meetings clearly pertain.
     - Use the "Meeting overviews" block as the trusted backbone — it lists each meeting's topics, decisions, action items. Use the "Excerpts" for specifics and grounding.
-    - Length: three to five sentences of plain prose. No bullet points, no numbered lists, no dashes, no asterisks, no markdown.
+    - Length: three to five short sentences of plain prose, around 12 to 18 words each. The answer is read aloud sentence by sentence — long run-on sentences sound stilted and break the speech rhythm. No bullet points, no numbered lists, no dashes, no asterisks, no markdown.
     - Speakers are not pre-labeled. Names from the transcript may be misheard — say "the team" or "two people" rather than guessing if you're unsure.
     - Never invent decisions, dates, owners, or meetings that are not in the context.
     - Do not preface with "Based on the meetings" or "According to the context." Just answer.
@@ -125,7 +126,7 @@ final class QAOrchestrator {
     - For broad questions ("what did they discuss", "summarize", "what was decided"), lead with the overview. Pull the matching topics or decisions and explain them in plain prose, citing specifics from the excerpts where helpful.
     - For specific questions ("what did X commit to", "did they decide Y"), search both the overview and the excerpts; if the overview captures it, name the relevant action item or decision.
     - Synthesize. Connect related items into one coherent paragraph. Do not paste excerpts verbatim or use quotation marks around transcript text.
-    - Length: three to five sentences of plain prose. No bullet points, no numbered lists, no dashes, no asterisks, no markdown, no headings, no code blocks. Sentences with periods only.
+    - Length: three to five short sentences of plain prose, around 12 to 18 words each. The answer is read aloud sentence by sentence — long run-on sentences sound stilted and break the speech rhythm. No bullet points, no numbered lists, no dashes, no asterisks, no markdown, no headings, no code blocks. Sentences with periods only.
     - Speakers are not pre-labeled. Names you see in the transcript come from the audio and may be misheard, especially unusual names or self-introductions. If the user asks who was in the meeting and you are not confident a name is correct, say "the speakers" or "two people" rather than guessing. Never invent a name that is not in the context.
     - Never invent decisions, dates, owners, or numbers that are not in the context.
     - Do not preface with "Based on the context" or "According to the meeting." Just answer.
@@ -169,18 +170,15 @@ final class QAOrchestrator {
     /// with `cancel()` would race the AudioSessionManager flip from
     /// `.voiceChat` (TTS) back to `.measurement` (clean ASR).
     private func armBargeIn() {
-        bargeIn.start { [weak self] in
-            guard let self else { return }
-            self.didBargeIn = true
-            self.log.info("user barged in — cancelling answer playback")
-            Task {
-                await self.cancel()
-                if let rearm = self.onAutoRearm {
-                    self.log.info("auto-rearm invoked after barge-in")
-                    await rearm()
-                }
-            }
-        }
+        // Auto barge-in is intentionally disabled. The energy-based gate at
+        // -32 dB / 180 ms hold misfires on Kokoro tail bleed past Apple's AEC
+        // (especially on speaker output), and the auto-rearm path then opens
+        // a 6 s mic window that ASR happily transcribes — feeding garbage
+        // back as the user's "next question." We're keeping hold-to-talk as
+        // the only interrupt mechanism until we wire TEN-VAD + SmartTurnV3
+        // (Day 5 stretch deferred). The BargeInController + onAutoRearm
+        // plumbing stays so swapping back is a one-line change.
+        log.debug("armBargeIn no-op (energy gate disabled, hold-to-talk only)")
     }
 
     /// Reset the `didBargeIn` flag so the chat UI's "you interrupted" banner
