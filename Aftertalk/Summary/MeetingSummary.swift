@@ -21,7 +21,7 @@ struct ActionItem: Equatable, Sendable {
     @Guide(description: "What needs to be done. Imperative, one sentence.")
     var description: String
 
-    @Guide(description: "Person responsible if explicitly named in the meeting; otherwise leave nil.")
+    @Guide(description: "Person responsible if explicitly named in the meeting. Omit the field entirely when no person was named. Never write 'nil', 'null', 'none', or 'unknown'.")
     var owner: String?
 }
 
