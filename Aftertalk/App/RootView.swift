@@ -102,13 +102,33 @@ struct RootView: View {
             return
         }
         let store = SwiftDataVectorStore(modelContainer: container)
-        let p = MeetingProcessingPipeline(repository: repository, embeddings: embeddings, llm: llm)
+        // Bundle dir holding the FluidAudio Parakeet Core ML weights. Missing
+        // dir = unbundled dev build; we pass nil and the pipeline silently
+        // skips the polishing stage so behavior matches pre-Parakeet builds.
+        // warm() is intentionally NOT called here — FluidAudioParakeetTranscriber
+        // lazy-loads on first transcribe to avoid burning the ~3-4s Core ML
+        // compile cost on app start.
+        let batchASR: (any BatchASRService)? = {
+            guard let modelDir = Bundle.main.url(
+                forResource: "parakeet-tdt-0.6b-v2-coreml",
+                withExtension: nil
+            ) else { return nil }
+            return FluidAudioParakeetTranscriber(modelDirectory: modelDir)
+        }()
+        let p = MeetingProcessingPipeline(
+            repository: repository,
+            embeddings: embeddings,
+            llm: llm,
+            batchASR: batchASR
+        )
         pipeline = p
-        recording.onSessionEnded = { transcript, duration, _ in
-            // audioFileURL is captured by AudioCaptureService and will be
-            // consumed by the batch ASR (Parakeet) pass in a later step.
+        recording.onSessionEnded = { transcript, duration, audioFileURL in
             Task { @MainActor in
-                _ = await p.process(transcript: transcript, durationSeconds: duration)
+                _ = await p.process(
+                    transcript: transcript,
+                    durationSeconds: duration,
+                    audioFileURL: audioFileURL
+                )
             }
         }
 
