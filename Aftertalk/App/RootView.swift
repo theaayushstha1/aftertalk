@@ -18,7 +18,14 @@ struct RootView: View {
             MeetingsListView(qaContext: qa)
                 .tabItem { Label("Meetings", systemImage: "list.bullet.rectangle.portrait") }
         }
-        .task { configurePipeline() }
+        .task {
+            configurePipeline()
+            // Hand the privacy monitor to the VM so it can flip the
+            // `isCapturingMeeting` flag during start/stop. Without this the
+            // .violation state is unreachable and the auditable-privacy claim
+            // is dead code.
+            recording.privacyMonitor = privacy
+        }
         .alert("Microphone access required", isPresented: .constant(recording.permissionDenied)) {
             Button("OK") { recording.permissionDenied = false }
         } message: {

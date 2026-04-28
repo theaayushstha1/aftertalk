@@ -25,6 +25,12 @@ final class RecordingViewModel {
 
     var onSessionEnded: (@MainActor (_ transcript: String, _ durationSeconds: Double, _ audioFileURL: URL?) -> Void)?
 
+    /// Optional: when set, the VM toggles `isCapturingMeeting` so the
+    /// `NWPathMonitor`-based privacy gate can fire `.violation` if any
+    /// interface is up while recording. Wired from RootView so the gate is
+    /// auditable rather than dead code.
+    var privacyMonitor: PrivacyMonitor?
+
     private let log = Logger(subsystem: "com.theaayushstha.aftertalk", category: "VM")
     private let capture = AudioCaptureService()
     private let streamer: MoonshineStreamer
@@ -89,6 +95,7 @@ final class RecordingViewModel {
             eventsIn = 0
             lastError = nil
             isRecording = true
+            privacyMonitor?.isCapturingMeeting = true
         } catch let err as AudioCaptureError {
             log.error("capture: \(String(describing: err), privacy: .public)")
             lastError = "capture: \(err)"
@@ -123,6 +130,7 @@ final class RecordingViewModel {
         let captured = transcript
         // Do NOT cancel deltaTask/diagTask — they're long-lived consumers.
         isRecording = false
+        privacyMonitor?.isCapturingMeeting = false
         if !captured.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             onSessionEnded?(captured, duration, audioURL)
         }
@@ -133,6 +141,7 @@ final class RecordingViewModel {
         await streamer.stop()
         await AudioSessionManager.shared.deactivate()
         isRecording = false
+        privacyMonitor?.isCapturingMeeting = false
     }
 
     private static func requestMicPermission() async -> Bool {

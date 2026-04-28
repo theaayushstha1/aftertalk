@@ -19,6 +19,7 @@ final class PrivacyMonitor {
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "com.theaayushstha.aftertalk.privacy", qos: .utility)
     private let log = Logger(subsystem: "com.theaayushstha.aftertalk", category: "Privacy")
+    private var started = false
 
     /// Set true while a meeting is being recorded; an active interface during this window is a hard violation.
     var isCapturingMeeting: Bool = false {
@@ -26,6 +27,10 @@ final class PrivacyMonitor {
     }
 
     func start() {
+        // WindowGroup.onAppear fires every foreground; NWPathMonitor.start
+        // crashes if called twice. Idempotent guard.
+        guard !started else { return }
+        started = true
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in self?.reevaluate(path) }
         }
