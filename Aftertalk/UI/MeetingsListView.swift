@@ -1,38 +1,49 @@
 import SwiftData
 import SwiftUI
 
+/// Quiet Studio editorial layout: warm sand background, big "Meetings" title,
+/// 3-column stat card, sectioned hairline-separated rows. No List/insetGrouped
+/// chrome — every divider is a 0.5pt rule and the only "card" is the stats
+/// header.
 struct MeetingsListView: View {
     let qaContext: QAContext?
+    @Environment(\.atPalette) private var palette
+    @Environment(PrivacyMonitor.self) private var privacy
     @Query(sort: \Meeting.recordedAt, order: .reverse) private var meetings: [Meeting]
-    @State private var searchText = ""
+
     @State private var renameTarget: Meeting?
     @State private var renameDraft = ""
     @State private var deleteTarget: Meeting?
     @State private var actionError: String?
+    @State private var navMeetingId: UUID?
+    @State private var openSearch = false
 
     var body: some View {
         NavigationStack {
-            Group {
-                if meetings.isEmpty {
-                    ContentUnavailableView(
-                        "No meetings yet",
-                        systemImage: "waveform",
-                        description: Text("Tap Record to capture your first meeting. Everything stays on this device.")
-                    )
-                } else if filtered.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
-                } else {
-                    listBody
+            ZStack(alignment: .top) {
+                palette.bg.ignoresSafeArea()
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        header
+                        if meetings.isEmpty {
+                            emptyState
+                        } else {
+                            sections
+                        }
+                    }
+                    .padding(.bottom, 110)
                 }
             }
-            .navigationTitle(meetings.isEmpty ? "Meetings" : "\(meetings.count) Meeting\(meetings.count == 1 ? "" : "s")")
-            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search transcripts")
+            .navigationBarHidden(true)
             .navigationDestination(for: UUID.self) { id in
                 if let m = meetings.first(where: { $0.id == id }) {
                     MeetingDetailView(meeting: m, qaContext: qaContext)
                 } else {
                     Text("Meeting not found.")
                 }
+            }
+            .navigationDestination(isPresented: $openSearch) {
+                SearchView()
             }
             .alert("Rename meeting", isPresented: renameBinding, presenting: renameTarget) { target in
                 TextField("Title", text: $renameDraft)
@@ -56,67 +67,179 @@ struct MeetingsListView: View {
                 Text(msg)
             }
         }
+        .atTheme()
     }
 
-    private var listBody: some View {
-        List {
-            ForEach(grouped, id: \.0) { section, items in
-                Section(section) {
-                    ForEach(items) { meeting in
-                        NavigationLink(value: meeting.id) {
-                            MeetingRow(meeting: meeting)
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                deleteTarget = meeting
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                            Button {
-                                renameDraft = meeting.title
-                                renameTarget = meeting
-                            } label: {
-                                Label("Rename", systemImage: "pencil")
-                            }
-                            .tint(.indigo)
-                        }
-                    }
-                }
+    // MARK: - Header
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center) {
+                QSEyebrow(dateEyebrow, color: palette.faint)
+                Spacer()
+                PrivacyBadge(state: privacy.state, compact: true)
+            }
+            .padding(.top, AT.Space.safeTop)
+            .padding(.bottom, 10)
+
+            QSTitle(text: "Meetings", size: 44, tracking: -1.6, color: palette.ink)
+                .padding(.bottom, 18)
+
+            statCard
+                .padding(.bottom, 14)
+
+            searchAffordance
+                .padding(.bottom, 8)
+        }
+        .padding(.horizontal, 24)
+    }
+
+    private var dateEyebrow: String {
+        Date.now.formatted(.dateTime.weekday(.abbreviated).month(.wide).day())
+    }
+
+    private var statCard: some View {
+        let totalSec = meetings.reduce(0) { $0 + $1.durationSeconds }
+        let totalHours = totalSec / 3600
+        let fresh = meetings.filter {
+            Calendar.current.isDateInToday($0.recordedAt)
+        }.count
+        let hoursLabel: String = totalHours >= 1
+            ? String(format: "%.1fh", totalHours)
+            : String(format: "%dm", Int((totalSec / 60).rounded()))
+        return HStack(spacing: 0) {
+            QSStat(value: "\(meetings.count)", label: "Captured", valueColor: palette.ink)
+            Spacer()
+            QSStat(value: hoursLabel, label: "On record", valueColor: palette.ink)
+            Spacer()
+            QSStat(value: "\(fresh)", label: "Fresh today", valueColor: palette.accent)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: AT.Radius.base * 1.4, style: .continuous)
+                .fill(palette.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AT.Radius.base * 1.4, style: .continuous)
+                        .stroke(palette.line, lineWidth: 0.5)
+                )
+        )
+    }
+
+    private var searchAffordance: some View {
+        Button { openSearch = true } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14, weight: .medium))
+                Text("Search across every meeting…")
+                    .font(.atBody(14))
+                Spacer()
+                Text("\(meetings.count) IDX")
+                    .font(.atMono(10, weight: .medium))
+                    .tracking(0.4)
+            }
+            .foregroundStyle(palette.faint)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: AT.Radius.base * 1.2, style: .continuous)
+                    .fill(palette.surfaceAlt)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AT.Radius.base * 1.2, style: .continuous)
+                            .stroke(palette.line, lineWidth: 0.5)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Empty
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            QSEyebrow("No meetings yet", color: palette.faint)
+            QSBody(text: "Tap the dot to capture your first meeting. Everything stays on this device.",
+                   color: palette.mute)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 32)
+    }
+
+    // MARK: - Sections
+
+    private var sections: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(buckets, id: \.0) { (title, items) in
+                section(title: title, rows: items)
             }
         }
-        .listStyle(.insetGrouped)
+        .padding(.horizontal, 24)
     }
 
-    private var filtered: [Meeting] {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !trimmed.isEmpty else { return meetings }
-        return meetings.filter { m in
-            m.title.lowercased().contains(trimmed)
-                || m.fullTranscript.lowercased().contains(trimmed)
+    private func section(title: String, rows: [Meeting]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                QSEyebrow(title, color: palette.faint)
+                Spacer()
+                Text(String(format: "%02d", rows.count))
+                    .font(.atMono(10, weight: .medium))
+                    .tracking(0.4)
+                    .foregroundStyle(palette.faint)
+            }
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+            .overlay(alignment: .top) { QSDivider() }
+
+            ForEach(Array(rows.enumerated()), id: \.element.id) { idx, m in
+                MeetingRow(
+                    meeting: m,
+                    isFirst: idx == 0,
+                    isFresh: Calendar.current.isDateInToday(m.recordedAt) && idx == 0,
+                    onOpen: { navMeetingId = m.id },
+                    onRename: {
+                        renameDraft = m.title
+                        renameTarget = m
+                    },
+                    onDelete: { deleteTarget = m }
+                )
+            }
+        }
+        .padding(.top, 22)
+        .background(
+            NavigationLink(value: navMeetingId) { EmptyView() }
+                .opacity(0)
+        )
+        .onChange(of: navMeetingId) { _, newValue in
+            // SwiftUI consumes the value automatically; clear so the same row
+            // can be opened twice.
+            if newValue != nil {
+                DispatchQueue.main.async { navMeetingId = nil }
+            }
         }
     }
 
-    /// Bucket meetings by recency so a long history scrolls predictably.
-    /// Order is preserved from the @Query (recordedAt desc).
-    private var grouped: [(String, [Meeting])] {
+    private var buckets: [(String, [Meeting])] {
         let cal = Calendar.current
-        let now = Date()
-        var buckets: [(String, [Meeting])] = []
-        var todayItems: [Meeting] = []
-        var yesterdayItems: [Meeting] = []
-        var weekItems: [Meeting] = []
-        var olderItems: [Meeting] = []
-        for m in filtered {
-            if cal.isDateInToday(m.recordedAt) { todayItems.append(m) }
-            else if cal.isDateInYesterday(m.recordedAt) { yesterdayItems.append(m) }
-            else if let days = cal.dateComponents([.day], from: m.recordedAt, to: now).day, days < 7 { weekItems.append(m) }
-            else { olderItems.append(m) }
+        let now = Date.now
+        var today: [Meeting] = []
+        var yesterday: [Meeting] = []
+        var thisWeek: [Meeting] = []
+        var earlier: [Meeting] = []
+        for m in meetings {
+            if cal.isDateInToday(m.recordedAt) { today.append(m) }
+            else if cal.isDateInYesterday(m.recordedAt) { yesterday.append(m) }
+            else if let days = cal.dateComponents([.day], from: m.recordedAt, to: now).day, days < 7 { thisWeek.append(m) }
+            else { earlier.append(m) }
         }
-        if !todayItems.isEmpty { buckets.append(("Today", todayItems)) }
-        if !yesterdayItems.isEmpty { buckets.append(("Yesterday", yesterdayItems)) }
-        if !weekItems.isEmpty { buckets.append(("Earlier this week", weekItems)) }
-        if !olderItems.isEmpty { buckets.append(("Earlier", olderItems)) }
-        return buckets
+        var out: [(String, [Meeting])] = []
+        if !today.isEmpty { out.append(("Today", today)) }
+        if !yesterday.isEmpty { out.append(("Yesterday", yesterday)) }
+        if !thisWeek.isEmpty { out.append(("Earlier this week", thisWeek)) }
+        if !earlier.isEmpty {
+            let monthKey = earlier.first.map { now.distance(toMonthOf: $0.recordedAt) } ?? "Earlier"
+            out.append((monthKey, earlier))
+        }
+        return out
     }
 
     // MARK: - Mutations
@@ -166,62 +289,157 @@ struct MeetingsListView: View {
     }
 }
 
+// MARK: - Row
+
 private struct MeetingRow: View {
     let meeting: Meeting
+    let isFirst: Bool
+    let isFresh: Bool
+    let onOpen: () -> Void
+    let onRename: () -> Void
+    let onDelete: () -> Void
+
+    @Environment(\.atPalette) private var palette
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(meeting.title)
-                .font(.headline)
-                .lineLimit(2)
-            metaRow
-            if let s = meeting.summary {
-                summaryPreview(s)
-            } else {
-                Text("Summary pending…")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+        NavigationLink(value: meeting.id) {
+            HStack(alignment: .top, spacing: 0) {
+                ZStack(alignment: .topLeading) {
+                    if isFresh {
+                        Circle()
+                            .fill(palette.accent)
+                            .frame(width: 4, height: 4)
+                            .overlay(
+                                Circle()
+                                    .stroke(palette.accent.opacity(0.3), lineWidth: 3)
+                            )
+                            .padding(.top, 22)
+                    }
+                }
+                .frame(width: 10, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    titleRow
+                    if let s = meeting.summary, let preview = preview(from: s) {
+                        Text(preview)
+                            .font(.atBody(13))
+                            .foregroundStyle(palette.mute)
+                            .lineLimit(2)
+                            .lineSpacing(2)
+                            .padding(.bottom, 4)
+                    }
+                    metaRow
+                }
             }
+            .padding(.vertical, 15)
+            .padding(.leading, isFresh ? 0 : 0)
+            .overlay(alignment: .top) {
+                if !isFirst { QSDivider() }
+            }
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 6)
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete", systemImage: "trash")
+            }
+            Button(action: onRename) {
+                Label("Rename", systemImage: "pencil")
+            }
+            .tint(.indigo)
+        }
+    }
+
+    private var titleRow: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(meeting.title)
+                .font(.atDisplay(17, weight: .semibold))
+                .tracking(-0.3)
+                .foregroundStyle(palette.ink)
+                .lineLimit(2)
+            Spacer(minLength: 8)
+            Text(timeText)
+                .font(.atMono(11, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(palette.faint)
+        }
     }
 
     private var metaRow: some View {
         HStack(spacing: 6) {
-            Label(durationText, systemImage: "clock")
-            if !meeting.speakers.isEmpty {
-                Text("·")
-                Label("\(meeting.speakers.count)", systemImage: "person.2.fill")
+            Text(durationText)
+                .monospacedDigit()
+            dot
+            Text(speakersText)
+            if let count = actionCount {
+                dot
+                Text("\(count) action\(count == 1 ? "" : "s")")
+                    .foregroundStyle(palette.accent)
             }
-            if !meeting.chunks.isEmpty {
-                Text("·")
-                Label("\(meeting.chunks.count)", systemImage: "rectangle.stack")
+            if let topic = leadTopic {
+                dot
+                Text(topic.lowercased())
             }
             Spacer()
-            Text(meeting.recordedAt, format: .dateTime.month().day().hour().minute())
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .labelStyle(.titleAndIcon)
+        .font(.atMono(11, weight: .medium))
+        .tracking(0.2)
+        .foregroundStyle(palette.faint)
     }
 
-    private func summaryPreview(_ s: MeetingSummaryRecord) -> some View {
-        let line = s.decisions.first
-            ?? s.actionItems.first?.description
-            ?? s.topics.first
-            ?? s.openQuestions.first
-            ?? "No structured items."
-        return Text(line)
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
-            .padding(.top, 2)
+    private var dot: some View {
+        Text("·").foregroundStyle(palette.faint)
+    }
+
+    private var timeText: String {
+        meeting.recordedAt.formatted(.dateTime.hour().minute())
     }
 
     private var durationText: String {
         let total = Int(meeting.durationSeconds.rounded())
-        let m = total / 60
+        let h = total / 3600
+        let m = (total % 3600) / 60
         let s = total % 60
-        return m > 0 ? "\(m)m \(s)s" : "\(s)s"
+        if h > 0 { return "\(h)h \(m)m" }
+        if m > 0 { return String(format: "%dm %02ds", m, s) }
+        return "\(s)s"
+    }
+
+    private var speakersText: String {
+        let count = max(meeting.speakers.count, 1)
+        return "\(count) \(count == 1 ? "voice" : "voices")"
+    }
+
+    private var actionCount: Int? {
+        guard let count = meeting.summary?.actionItems.count, count > 0 else { return nil }
+        return count
+    }
+
+    private var leadTopic: String? {
+        meeting.summary?.topics.first
+    }
+
+    private func preview(from s: MeetingSummaryRecord) -> String? {
+        if let d = s.decisions.first { return d }
+        if let a = s.actionItems.first?.description { return a }
+        if let t = s.topics.first { return t }
+        if let q = s.openQuestions.first { return q }
+        return nil
+    }
+}
+
+// MARK: - Helpers
+
+private extension Date {
+    /// Returns "April" / "March" / etc. for a date earlier than this week, or
+    /// "Earlier" for everything beyond a year.
+    func distance(toMonthOf target: Date) -> String {
+        let cal = Calendar.current
+        let nowYear = cal.component(.year, from: self)
+        let targetYear = cal.component(.year, from: target)
+        if nowYear != targetYear {
+            return target.formatted(.dateTime.month(.wide).year())
+        }
+        return target.formatted(.dateTime.month(.wide))
     }
 }

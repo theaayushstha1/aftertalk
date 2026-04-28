@@ -20,6 +20,9 @@ struct RootView: View {
 
             GlobalChatView(qaContext: qa)
                 .tabItem { Label("Ask", systemImage: "rectangle.stack.badge.person.crop") }
+
+            SettingsView()
+                .tabItem { Label("Settings", systemImage: "gearshape") }
         }
         .task {
             configurePipeline()
@@ -36,25 +39,32 @@ struct RootView: View {
         }
     }
 
-    private var recordTab: some View {
-        ZStack {
-            Color(.systemBackground).ignoresSafeArea()
+    @Environment(\.atPalette) private var palette
 
-            VStack(spacing: 24) {
-                header
-                Spacer()
+    private var recordTab: some View {
+        ZStack(alignment: .top) {
+            palette.bg.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                recordHeader
+                statusEyebrow
+                timer
+                fragmentLabel
+                ImmersiveWaveform(height: 180, isActive: recording.isRecording)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 24)
+                    .padding(.bottom, 6)
                 transcriptPane
                 if let stage = pipeline?.stage, stage != .idle {
                     PipelineStatusView(stage: stage)
+                        .padding(.bottom, 8)
                 }
-                Spacer()
                 RecordButton(isRecording: recording.isRecording) {
                     Task { await recording.toggle() }
                 }
-                Spacer().frame(height: 16)
+                .padding(.bottom, 28)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 32)
+            .padding(.horizontal, 0)
 
             if debugVisible {
                 DebugOverlay(recording: recording, privacy: privacy)
@@ -68,35 +78,106 @@ struct RootView: View {
                     withAnimation(.easeInOut(duration: 0.2)) { debugVisible.toggle() }
                 }
         )
+        .atTheme()
     }
 
-    private var header: some View {
-        HStack {
+    private var recordHeader: some View {
+        HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Aftertalk").font(.system(.title2, design: .rounded).weight(.bold))
-                Text("Fully on-device meeting intelligence")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                QSEyebrow("Aftertalk", color: palette.faint)
+                Text("On this device only")
+                    .font(.atBody(12))
+                    .foregroundStyle(palette.mute)
             }
             Spacer()
-            PrivacyBadge(state: privacy.state)
+            PrivacyBadge(state: privacy.state, compact: true)
         }
+        .padding(.horizontal, 22)
+        .padding(.top, AT.Space.safeTop)
+        .padding(.bottom, 14)
+    }
+
+    private var statusEyebrow: some View {
+        HStack(spacing: 6) {
+            if recording.isRecording {
+                Circle()
+                    .fill(palette.accent)
+                    .frame(width: 7, height: 7)
+                    .overlay(
+                        Circle().stroke(palette.accent.opacity(0.18), lineWidth: 4)
+                    )
+            }
+            Text(recording.isRecording ? "RECORDING · LIVE" : "READY · TAP TO BEGIN")
+                .font(.atMono(10, weight: .bold))
+                .tracking(1.6)
+                .foregroundStyle(recording.isRecording ? palette.accent : palette.faint)
+        }
+        .padding(.bottom, 14)
+    }
+
+    private var timer: some View {
+        Text(elapsedString)
+            .font(.system(size: 64, weight: .light, design: .default))
+            .tracking(-3)
+            .monospacedDigit()
+            .foregroundStyle(palette.ink)
+    }
+
+    private var fragmentLabel: some View {
+        Text(fragmentText)
+            .font(.atMono(11, weight: .medium))
+            .tracking(0.4)
+            .foregroundStyle(palette.faint)
+            .padding(.top, 6)
+    }
+
+    private var elapsedString: String {
+        let total = Int(recording.elapsedSeconds.rounded())
+        let m = total / 60
+        let s = total % 60
+        return String(format: "%02d:%02d", m, s)
+    }
+
+    private var fragmentText: String {
+        let words = recording.transcript.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
+        if recording.isRecording {
+            return "\(words) word\(words == 1 ? "" : "s") captured · 0 sent"
+        }
+        return words == 0 ? "Idle" : "\(words) word\(words == 1 ? "" : "s") on file"
     }
 
     private var transcriptPane: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 6) {
+                QSEyebrow("Live transcript", color: palette.faint)
+                    .padding(.bottom, 6)
                 if recording.transcript.isEmpty {
-                    Text(recording.isRecording ? "Listening…" : "Tap the button to start a meeting.")
-                        .foregroundStyle(.secondary)
+                    Text(recording.isRecording ? "Listening…" : "Tap the dot below to start a meeting.")
+                        .font(.atBody(14))
+                        .foregroundStyle(palette.mute)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     Text(recording.transcript)
-                        .font(.system(.body, design: .rounded))
+                        .font(.atBody(15))
+                        .lineSpacing(4)
+                        .foregroundStyle(palette.ink)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                if recording.isRecording {
+                    HStack(spacing: 8) {
+                        ATListeningDots(color: palette.faint)
+                        Text("listening")
+                            .font(.atBody(12))
+                            .italic()
+                            .foregroundStyle(palette.faint)
+                    }
+                    .padding(.top, 4)
+                }
             }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 14)
         }
+        .frame(maxHeight: .infinity)
     }
 
     private func configurePipeline() {

@@ -1,11 +1,20 @@
 import SwiftData
 import SwiftUI
 
+/// Quiet Studio "Ask" surface. Hold the dot, ask a question, get a spoken
+/// answer back. Visual language is editorial — palette.bg + hairline 0.5pt
+/// dividers, no card chrome. The four phases (idle → listening → thinking →
+/// answer) come straight from `qs-ask.jsx`; thinking reuses the same
+/// `BreathingOrb` the post-recording ProcessingView uses, so there's a single
+/// "the device is computing" visual across the app.
 struct ChatThreadView: View {
     let meeting: Meeting
     let orchestrator: QAOrchestrator
     let questionASR: QuestionASR
     let repository: MeetingsRepository
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.atPalette) private var palette
 
     @Query private var messages: [ChatMessage]
     @State private var holding = false
@@ -46,11 +55,17 @@ struct ChatThreadView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            messageList
+            header
+            scopeChip
+            bodyArea
             statusStrip
             bargeInBanner
-            holdButton
+            holdFAB
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(palette.bg.ignoresSafeArea())
+        .navigationBarBackButtonHidden(true)
+        .atTheme()
         .task {
             await ensureThread()
             await questionASR.prewarm()
@@ -88,123 +103,302 @@ struct ChatThreadView: View {
         }
     }
 
-    private var messageList: some View {
+    // MARK: - Header
+
+    private var header: some View {
+        HStack {
+            Button {
+                dismiss()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.left")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Done")
+                        .font(.atBody(13, weight: .medium))
+                }
+                .foregroundStyle(palette.mute)
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            QSPrivacyBadge(compact: true)
+        }
+        .padding(.horizontal, 22)
+        .padding(.top, AT.Space.safeTop)
+        .padding(.bottom, 14)
+    }
+
+    private var scopeChip: some View {
+        HStack {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(palette.accent)
+                    .frame(width: 6, height: 6)
+                Text(scopeLabel)
+                    .font(.atMono(11, weight: .medium))
+                    .tracking(0.3)
+                    .foregroundStyle(palette.mute)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(palette.surface)
+                    .overlay(Capsule().stroke(palette.line, lineWidth: 0.5))
+            )
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 4)
+    }
+
+    private var scopeLabel: String {
+        let title = meeting.title.uppercased()
+        let count = meeting.chunks.count
+        let core = count > 0 ? "Scope: \(title) · \(count) indexed"
+                             : "Scope: \(title)"
+        return core
+    }
+
+    // MARK: - Phase-aware body
+
+    @ViewBuilder
+    private var bodyArea: some View {
+        if shouldShowIdleSplash {
+            idleBlock
+                .padding(.horizontal, 24)
+                .padding(.top, 20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } else {
+            conversation
+        }
+    }
+
+    private var shouldShowIdleSplash: Bool {
+        messages.isEmpty && !holding && orchestrator.stage == .idle && orchestrator.liveAnswer.isEmpty
+    }
+
+    private var idleBlock: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            QSTitle(
+                text: "Hold the dot.\nAsk anything.",
+                size: 32,
+                tracking: -1.1,
+                color: palette.ink
+            )
+            .padding(.bottom, 18)
+            QSBody(
+                text: "Your question never leaves the device. Your answer comes from this meeting and the ones around it.",
+                size: 14,
+                color: palette.mute
+            )
+            .padding(.bottom, 28)
+            QSEyebrow("Try asking", color: palette.faint)
+                .padding(.bottom, 12)
+            ForEach(Array(exemplarQuestions.enumerated()), id: \.offset) { idx, q in
+                exemplarRow(q, divider: idx > 0)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private let exemplarQuestions: [String] = [
+        "What did we decide on the timeline?",
+        "Who has open action items?",
+        "What's still unresolved from this meeting?",
+    ]
+
+    private func exemplarRow(_ q: String, divider: Bool) -> some View {
+        VStack(spacing: 0) {
+            if divider { QSDivider() }
+            Text("\u{201C}\(q)\u{201D}")
+                .font(.atSerif(14.5, weight: .regular))
+                .italic()
+                .foregroundStyle(palette.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 12)
+        }
+    }
+
+    // MARK: - Conversation (listening + thinking + messages)
+
+    private var conversation: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
-                    if messages.isEmpty {
-                        ContentUnavailableView(
-                            "Hold the mic to ask",
-                            systemImage: "mic.circle",
-                            description: Text("Ask a question about this meeting. Aftertalk answers using only the transcript.")
-                        )
-                        .padding(.top, 40)
-                    } else {
-                        ForEach(messages) { msg in
-                            MessageBubble(message: msg, orchestrator: orchestrator)
-                                .id(msg.id)
-                        }
+            ScrollView(showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 18) {
+                    ForEach(messages) { msg in
+                        MessageBlock(message: msg, orchestrator: orchestrator)
+                            .id(msg.id)
                     }
                     if holding {
                         listeningRow
-                    } else if orchestrator.stage != .idle && !orchestrator.liveAnswer.isEmpty {
+                            .id("listening")
+                    } else if isThinking {
+                        thinkingRow
+                            .id("thinking")
+                    } else if !orchestrator.liveAnswer.isEmpty {
                         streamingRow
+                            .id("streaming")
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, 24)
+                .padding(.top, 18)
+                .padding(.bottom, 24)
             }
             .onChange(of: messages.count) { _, _ in
                 if let last = messages.last {
                     withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
             }
+            .onChange(of: holding) { _, on in
+                if on { withAnimation { proxy.scrollTo("listening", anchor: .bottom) } }
+            }
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    private var isThinking: Bool {
+        switch orchestrator.stage {
+        case .retrieving, .generating:
+            return orchestrator.liveAnswer.isEmpty
+        default:
+            return false
         }
     }
+
+    private var listeningRow: some View {
+        VStack(spacing: 16) {
+            QSEyebrow("Listening", color: palette.accent)
+            ImmersiveWaveform(height: 120, isActive: true)
+                .padding(.horizontal, 4)
+            Text(liveTranscriptDisplay)
+                .font(.atSerif(20, weight: .regular))
+                .lineSpacing(4)
+                .foregroundStyle(palette.ink)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 56)
+                .padding(.horizontal, 8)
+        }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var liveTranscriptDisplay: String {
+        let raw = questionASR.liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.isEmpty { return "\u{2026}" }
+        return "\u{201C}\(raw)\u{201D}"
+    }
+
+    private var thinkingRow: some View {
+        VStack(spacing: 28) {
+            BreathingOrb(done: false)
+                .frame(width: 180, height: 180)
+            QSEyebrow("Searching this meeting on device", color: palette.faint)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+    }
+
+    private var streamingRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            QSEyebrow("Answer", color: palette.accent)
+            Text(orchestrator.liveAnswer)
+                .font(.atBody(16, weight: .regular))
+                .lineSpacing(4)
+                .foregroundStyle(palette.ink)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Status / barge-in
 
     @ViewBuilder
     private var statusStrip: some View {
         if let err = lastError {
-            Text(err)
-                .font(.caption)
-                .foregroundStyle(.red)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 4)
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(palette.accent)
+                Text(err)
+                    .font(.atMono(10.5, weight: .medium))
+                    .tracking(0.2)
+                    .foregroundStyle(palette.accent)
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 4)
         } else if let r = lastResult, let ttfsw = r.ttfswMillis {
-            Text("TTFSW \(Int(ttfsw)) ms · total \(Int(r.totalMillis)) ms")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 4)
+            HStack {
+                Spacer()
+                Text("TTFSW \(Int(ttfsw)) ms · total \(Int(r.totalMillis)) ms")
+                    .font(.atMono(10, weight: .medium))
+                    .tracking(0.4)
+                    .foregroundStyle(palette.faint)
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 4)
         }
     }
 
-    /// Banner shown after the user's voice trips the barge-in energy gate
-    /// during TTS playback. We render it above the hold button (not as an
-    /// overlay) so it doesn't fight with the listening row inside the
-    /// scroll view. Cleared by `clearBargeIn()` the moment a fresh hold
-    /// gesture starts. Auto-rearm makes this banner short-lived in
-    /// practice — it shows during the ~6 s listen window and disappears
-    /// when the orchestrator's next `runAsk` resets `didBargeIn`.
+    /// Shown after the user's voice trips the barge-in energy gate during TTS
+    /// playback. Auto-rearm makes this banner short-lived in practice — it
+    /// shows during the ~6 s listen window and disappears when the
+    /// orchestrator's next `runAsk` resets `didBargeIn`.
     @ViewBuilder
     private var bargeInBanner: some View {
         if orchestrator.didBargeIn {
             HStack(spacing: 8) {
                 Image(systemName: "hand.raised.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(palette.accent)
                 Text("You interrupted — keep talking or hold to ask again.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(.atMono(10.5, weight: .medium))
+                    .tracking(0.2)
+                    .foregroundStyle(palette.mute)
                 Spacer()
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
-            .background(.thinMaterial)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 8)
+            .background(
+                palette.surface.opacity(0.9)
+                    .overlay(alignment: .top) { QSDivider() }
+                    .overlay(alignment: .bottom) { QSDivider() }
+            )
             .transition(.opacity)
         }
     }
 
-    private var listeningRow: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "waveform.circle.fill")
-                .foregroundStyle(.red)
-            Text(questionASR.liveTranscript.isEmpty ? "Listening…" : questionASR.liveTranscript)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-            Spacer()
-        }
-        .padding(.vertical, 6)
-    }
+    // MARK: - Hold FAB
 
-    private var streamingRow: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "ellipsis.bubble")
-                .foregroundStyle(.secondary)
-            Text(orchestrator.liveAnswer)
-                .foregroundStyle(.primary)
-            Spacer()
-        }
-    }
-
-    private var holdButton: some View {
-        VStack(spacing: 8) {
-            Text(holding ? "Release to ask" : "Hold to ask")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Circle()
-                .fill(holding ? Color.red : Color.accentColor)
-                .frame(width: 80, height: 80)
-                .overlay {
-                    Image(systemName: "mic.fill")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.white)
-                }
-                .scaleEffect(holding ? 1.08 : 1.0)
-                .animation(.easeOut(duration: 0.15), value: holding)
+    private var holdFAB: some View {
+        VStack(spacing: 10) {
+            HoldDot(holding: holding)
                 .gesture(holdGesture)
+            Text(holdCaption)
+                .font(.atMono(11, weight: .semibold))
+                .tracking(0.6)
+                .foregroundStyle(palette.faint)
+                .textCase(.uppercase)
         }
-        .padding(.vertical, 16)
+        .padding(.horizontal, 24)
+        .padding(.top, 12)
+        .padding(.bottom, 36)
+    }
+
+    private var holdCaption: String {
+        if holding { return "Release when done" }
+        switch orchestrator.stage {
+        case .retrieving:
+            return "Thinking on device"
+        case .generating:
+            return orchestrator.liveAnswer.isEmpty ? "Thinking on device" : "Speaking"
+        case .speaking:
+            return "Speaking"
+        default:
+            return messages.isEmpty ? "Hold to ask" : "Hold to ask again"
+        }
     }
 
     private var holdGesture: some Gesture {
@@ -222,6 +416,8 @@ struct ChatThreadView: View {
                 }
             }
     }
+
+    // MARK: - Logic (unchanged)
 
     private func ensureThread() async {
         guard threadId == nil else { return }
@@ -257,8 +453,8 @@ struct ChatThreadView: View {
     /// Called by the orchestrator's `onAutoRearm` after a barge-in cancels the
     /// in-flight answer. Reopens QuestionASR for a short window so the user
     /// can keep speaking without finding the mic button. Auto-finalizes after
-    /// `autoRearmWindowSeconds` by routing through `endHold` — same persist +
-    /// ask pipeline as a manual release.
+    /// the window by routing through `endHold` — same persist + ask pipeline
+    /// as a manual release.
     private func autoRearmListen() async {
         autoRearmTask?.cancel()
         let task = Task { @MainActor in
@@ -339,66 +535,145 @@ struct ChatThreadView: View {
     }
 }
 
-private struct MessageBubble: View {
-    let message: ChatMessage
-    let orchestrator: QAOrchestrator
+// MARK: - HoldDot
+
+/// Quiet Studio Q&A FAB. 76pt core. Idle = ink fill + mic glyph. Holding =
+/// accent fill + soft halo + scale 1→1.08. Mirrors the JSX `qs-ask` button
+/// exactly so the muscle memory between recording (`RecordButton`) and asking
+/// is identical.
+private struct HoldDot: View {
+    let holding: Bool
+    @Environment(\.atPalette) private var palette
 
     var body: some View {
-        HStack {
-            if message.role == "user" { Spacer(minLength: 40) }
-            VStack(alignment: message.role == "user" ? .trailing : .leading, spacing: 6) {
-                Text(message.text)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(bubbleColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .foregroundStyle(message.role == "user" ? Color.white : Color.primary)
-                if message.role == "assistant" {
-                    speakerControl
+        ZStack {
+            if holding {
+                Circle()
+                    .fill(palette.accent.opacity(0.13))
+                    .frame(width: 110, height: 110)
+                Circle()
+                    .stroke(palette.accent.opacity(0.30), lineWidth: 1)
+                    .frame(width: 110, height: 110)
+            }
+            Circle()
+                .fill(holding ? palette.accent : palette.ink)
+                .frame(width: 76, height: 76)
+                .shadow(color: (holding ? palette.accent : Color.black).opacity(0.22),
+                        radius: 14, x: 0, y: 12)
+            Image(systemName: "mic.fill")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(palette.bg)
+        }
+        .frame(width: 110, height: 110)
+        .scaleEffect(holding ? 1.06 : 1.0)
+        .animation(AT.Motion.hold, value: holding)
+        .contentShape(Circle())
+    }
+}
+
+// MARK: - MessageBlock
+
+/// Editorial message rendering — no chat bubbles. User questions render as a
+/// serif italic "Asked …" block; assistant answers render as body copy with
+/// a "Drawn from" citations row, matching the answer phase in `qs-ask.jsx`.
+private struct MessageBlock: View {
+    let message: ChatMessage
+    let orchestrator: QAOrchestrator
+    @Environment(\.atPalette) private var palette
+
+    var body: some View {
+        if message.role == "user" {
+            VStack(alignment: .leading, spacing: 8) {
+                QSEyebrow("Asked", color: palette.faint)
+                Text("\u{201C}\(message.text)\u{201D}")
+                    .font(.atSerif(19, weight: .regular))
+                    .italic()
+                    .lineSpacing(4)
+                    .foregroundStyle(palette.ink)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        QSEyebrow("Answer", color: palette.accent)
+                        Spacer()
+                        replayButton
+                    }
+                    Text(message.text)
+                        .font(.atBody(16.5, weight: .regular))
+                        .lineSpacing(5)
+                        .foregroundStyle(palette.ink)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if !message.citations.isEmpty {
-                    citationsRow
+                    citationsBlock
                 }
             }
-            if message.role != "user" { Spacer(minLength: 40) }
         }
     }
 
-    private var speakerControl: some View {
+    private var replayButton: some View {
         Button {
             Task { await orchestrator.replay(message.text) }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: "speaker.wave.2.fill")
-                    .font(.caption)
+                    .font(.system(size: 10, weight: .semibold))
                 Text("Replay")
-                    .font(.caption2)
+                    .font(.atMono(10.5, weight: .semibold))
+                    .tracking(0.4)
             }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(.thinMaterial, in: Capsule())
+            .foregroundStyle(palette.mute)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(palette.surface)
+                    .overlay(Capsule().stroke(palette.line, lineWidth: 0.5))
+            )
         }
         .buttonStyle(.plain)
     }
 
-    private var bubbleColor: Color {
-        message.role == "user" ? Color.accentColor : Color(.secondarySystemBackground)
+    private var citationsBlock: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            QSEyebrow("Drawn from", color: palette.faint)
+                .padding(.bottom, 12)
+            ForEach(Array(message.citations.prefix(4).enumerated()), id: \.offset) { idx, c in
+                citationRow(c, divider: idx > 0)
+            }
+        }
     }
 
-    private var citationsRow: some View {
-        HStack(spacing: 6) {
-            ForEach(message.citations.prefix(3)) { c in
+    private func citationRow(_ c: ChunkCitation, divider: Bool) -> some View {
+        VStack(spacing: 0) {
+            if divider { QSDivider() }
+            HStack(alignment: .top, spacing: 12) {
                 Text(timestamp(c.startSec))
-                    .font(.caption2)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(.thinMaterial, in: Capsule())
+                    .font(.atMono(10, weight: .bold))
+                    .tracking(0.4)
+                    .foregroundStyle(palette.accent)
+                    .frame(minWidth: 36, alignment: .leading)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 4) {
+                    if let speaker = c.speakerName, !speaker.isEmpty {
+                        Text(speaker.uppercased())
+                            .font(.atMono(10, weight: .semibold))
+                            .tracking(0.5)
+                            .foregroundStyle(palette.mute)
+                    }
+                    Text("\(timestamp(c.startSec))–\(timestamp(c.endSec))")
+                        .font(.atBody(13, weight: .regular))
+                        .foregroundStyle(palette.mute)
+                }
+                Spacer()
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(palette.faint)
+                    .padding(.top, 4)
             }
-            if message.citations.count > 3 {
-                Text("+\(message.citations.count - 3)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
+            .padding(.vertical, 12)
         }
     }
 

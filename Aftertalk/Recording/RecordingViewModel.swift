@@ -38,6 +38,11 @@ final class RecordingViewModel {
     private var deltaTask: Task<Void, Never>?
     private var diagTask: Task<Void, Never>?
     private var startMonotonic: ContinuousClock.Instant?
+    /// Wall-clock recording duration in seconds. Drives the recording-screen
+    /// timer. Not derived from a stored timestamp because we want it to keep
+    /// counting in 1s increments even if no audio frames have arrived yet.
+    var elapsedSeconds: Double = 0
+    private var elapsedTask: Task<Void, Never>?
 
     init() {
         let modelDir = ModelLocator.moonshineModelDirectory()
@@ -96,6 +101,7 @@ final class RecordingViewModel {
             lastError = nil
             isRecording = true
             privacyMonitor?.isCapturingMeeting = true
+            startElapsedTimer()
         } catch let err as AudioCaptureError {
             log.error("capture: \(String(describing: err), privacy: .public)")
             lastError = "capture: \(err)"
@@ -131,6 +137,7 @@ final class RecordingViewModel {
         // Do NOT cancel deltaTask/diagTask — they're long-lived consumers.
         isRecording = false
         privacyMonitor?.isCapturingMeeting = false
+        stopElapsedTimer()
         if !captured.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             onSessionEnded?(captured, duration, audioURL)
         }
@@ -142,6 +149,25 @@ final class RecordingViewModel {
         await AudioSessionManager.shared.deactivate()
         isRecording = false
         privacyMonitor?.isCapturingMeeting = false
+        stopElapsedTimer()
+    }
+
+    private func startElapsedTimer() {
+        elapsedTask?.cancel()
+        elapsedSeconds = 0
+        let started = ContinuousClock.now
+        elapsedTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                self?.elapsedSeconds = Double(started.duration(to: .now).components.seconds) +
+                    Double(started.duration(to: .now).components.attoseconds) / 1e18
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+        }
+    }
+
+    private func stopElapsedTimer() {
+        elapsedTask?.cancel()
+        elapsedTask = nil
     }
 
     private static func requestMicPermission() async -> Bool {

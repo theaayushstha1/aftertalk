@@ -1,15 +1,28 @@
 import SwiftUI
 
+/// Quiet Studio detail screen. Editorial hero (eyebrow + 36pt title +
+/// stacked-avatar speaker row + meta tags), then a hairline tab strip with
+/// `summary / transcript / actions`. The "Ask this meeting" pill floats at
+/// the bottom-right of the summary tab — never modal, never sticky on the
+/// transcript or actions tabs.
 struct MeetingDetailView: View {
     let meeting: Meeting
     let qaContext: QAContext?
+    @Environment(\.atPalette) private var palette
+    @Environment(\.dismiss) private var dismiss
     @State private var selectedTab: Tab = .summary
+    @State private var openAsk = false
 
     enum Tab: String, CaseIterable, Identifiable {
-        case summary = "Summary"
-        case transcript = "Transcript"
-        case chat = "Chat"
+        case summary, transcript, actions
         var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .summary: "Summary"
+            case .transcript: "Transcript"
+            case .actions: "Actions"
+            }
+        }
     }
 
     init(meeting: Meeting, qaContext: QAContext? = nil) {
@@ -18,44 +31,42 @@ struct MeetingDetailView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("View", selection: $selectedTab) {
-                ForEach(Tab.allCases) { tab in
-                    Text(tab.rawValue).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-
-            switch selectedTab {
-            case .summary, .transcript:
-                ScrollView {
+        ZStack(alignment: .bottomTrailing) {
+            palette.bg.ignoresSafeArea()
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    topBar
+                    hero
+                    tabStrip
                     Group {
                         switch selectedTab {
-                        case .summary: summaryView
-                        case .transcript: transcriptView
-                        case .chat: EmptyView()
+                        case .summary: summaryTab
+                        case .transcript: transcriptTab
+                        case .actions: actionsTab
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 140)
                 }
-            case .chat:
-                chatView
+            }
+            if selectedTab == .summary, qaContext != nil {
+                askButton
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 36)
             }
         }
-        .navigationTitle(meeting.title)
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
+        .navigationDestination(isPresented: $openAsk) {
+            askDestination
+        }
         .onDisappear {
             // Real teardown: when the user pops back to the meetings list,
             // cancel any ongoing Q&A, drop Kokoro's ~300 MB CoreML graphs,
             // and deactivate the .playAndRecord session so the mic indicator
             // clears. Tab-switching inside this view does NOT deactivate (see
-            // ChatThreadView.onDisappear). Order matters: stop in-flight work
-            // first, then cleanup TTS (which shuts down its AVAudioEngine),
-            // *then* deactivate the session — flipping the last two gives us
-            // the "deactivate while I/O running" deadlock.
+            // ChatThreadView.onDisappear). Order: stop work → cleanup TTS →
+            // deactivate; flipping the last two deadlocks on "deactivate while
+            // I/O running."
             if let ctx = qaContext {
                 Task {
                     await ctx.orchestrator.cancel()
@@ -64,31 +75,414 @@ struct MeetingDetailView: View {
                 }
             }
         }
+        .atTheme()
+    }
+
+    // MARK: - Top bar
+
+    private var topBar: some View {
+        HStack(alignment: .center) {
+            Button {
+                dismiss()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.left")
+                        .font(.system(size: 14, weight: .medium))
+                    Text("Meetings")
+                        .font(.atBody(13, weight: .medium))
+                }
+                .foregroundStyle(palette.mute)
+            }
+            .buttonStyle(.plain)
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, AT.Space.safeTop)
+        .padding(.bottom, 12)
+    }
+
+    // MARK: - Hero
+
+    private var hero: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            QSEyebrow("\(dateLabel) · \(durationLabel)", color: palette.faint)
+                .padding(.bottom, 12)
+            QSTitle(text: meeting.title, size: 36, tracking: -1.3, color: palette.ink)
+                .padding(.bottom, 18)
+            speakerRow
+                .padding(.bottom, 18)
+            tagRow
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 22)
+    }
+
+    private var speakerRow: some View {
+        HStack(alignment: .center, spacing: 14) {
+            HStack(spacing: -8) {
+                ForEach(Array(speakerNames.prefix(4).enumerated()), id: \.offset) { idx, name in
+                    avatar(initials: initials(for: name), idx: idx)
+                }
+            }
+            if !speakerNames.isEmpty {
+                Text(speakerNames.joined(separator: " · "))
+                    .font(.atBody(12, weight: .regular))
+                    .foregroundStyle(palette.mute)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            } else {
+                Text("Speaker labels pending")
+                    .font(.atBody(12))
+                    .foregroundStyle(palette.faint)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func avatar(initials: String, idx: Int) -> some View {
+        let palette = avatarPalette[idx % avatarPalette.count]
+        return Text(initials)
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 30, height: 30)
+            .background(Circle().fill(palette))
+            .overlay(Circle().stroke(self.palette.bg, lineWidth: 2))
+    }
+
+    private var tagRow: some View {
+        let tags = computedTags
+        return Group {
+            if tags.isEmpty {
+                EmptyView()
+            } else {
+                HStack(spacing: 6) {
+                    ForEach(tags, id: \.self) { t in
+                        Text(t.uppercased())
+                            .font(.atMono(10, weight: .semibold))
+                            .tracking(0.5)
+                            .foregroundStyle(palette.faint)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .overlay(
+                                Capsule().stroke(palette.line, lineWidth: 0.5)
+                            )
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Tab strip
+
+    private var tabStrip: some View {
+        HStack(spacing: 0) {
+            ForEach(Tab.allCases) { t in
+                tabButton(t)
+            }
+            Spacer()
+        }
+        .overlay(alignment: .bottom) { QSDivider() }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 22)
     }
 
     @ViewBuilder
-    private var summaryView: some View {
+    private func tabButton(_ t: Tab) -> some View {
+        let active = t == selectedTab
+        Button {
+            withAnimation(AT.Motion.standard) { selectedTab = t }
+        } label: {
+            HStack(spacing: 6) {
+                Text(t.label)
+                    .font(.atBody(13, weight: .medium))
+                    .tracking(-0.1)
+                    .foregroundStyle(active ? palette.ink : palette.faint)
+                if t == .actions, actionCount > 0 {
+                    Text("\(actionCount)")
+                        .font(.atMono(10, weight: .semibold))
+                        .foregroundStyle(palette.accent)
+                }
+            }
+            .padding(.vertical, 11)
+            .padding(.trailing, 22)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(active ? palette.ink : Color.clear)
+                    .frame(height: 1.5)
+                    .offset(y: 0)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Summary tab
+
+    @ViewBuilder
+    private var summaryTab: some View {
         if let s = meeting.summary {
-            VStack(alignment: .leading, spacing: 16) {
-                section("Decisions", items: s.decisions)
-                actionItemsSection(s.actionItems)
-                section("Topics", items: s.topics)
-                section("Open questions", items: s.openQuestions)
-                Text("Generated in \(Int(s.generationLatencyMillis)) ms · \(s.generatedAt, format: .dateTime.hour().minute())")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+            VStack(alignment: .leading, spacing: 0) {
+                if let lead = leadSentence(from: s) {
+                    QSEyebrow("The shape of it", color: palette.faint)
+                        .padding(.bottom, 10)
+                    Text(lead)
+                        .font(.atDisplay(22, weight: .regular))
+                        .tracking(-0.4)
+                        .lineSpacing(6)
+                        .foregroundStyle(palette.ink)
+                        .padding(.bottom, 28)
+                }
+                if !s.decisions.isEmpty {
+                    decisionsBlock(s.decisions)
+                        .padding(.bottom, 28)
+                }
+                if let quote = quotedMoment {
+                    quoteBlock(quote)
+                        .padding(.bottom, 28)
+                }
+                if !s.topics.isEmpty {
+                    listBlock(title: "Topics", items: s.topics, mono: true)
+                        .padding(.bottom, 28)
+                }
+                if !s.openQuestions.isEmpty {
+                    listBlock(title: "Open questions", items: s.openQuestions, mono: false)
+                        .padding(.bottom, 28)
+                }
+                generatedFooter(s)
             }
         } else {
-            ContentUnavailableView(
-                "Summary not generated yet",
-                systemImage: "doc.text.magnifyingglass",
-                description: Text("Foundation Models was unavailable or the recording was too short.")
+            unavailable(
+                title: "Summary not generated yet",
+                body: "Foundation Models was unavailable, or the recording was too short to distill."
             )
         }
     }
 
+    private func decisionsBlock(_ decisions: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            QSEyebrow("Decisions · \(String(format: "%02d", decisions.count))", color: palette.faint)
+                .padding(.bottom, 12)
+            ForEach(Array(decisions.enumerated()), id: \.offset) { idx, d in
+                HStack(alignment: .top, spacing: 14) {
+                    Text(String(format: "%02d", idx + 1))
+                        .font(.atMono(11, weight: .bold))
+                        .tracking(0.4)
+                        .foregroundStyle(palette.accent)
+                        .frame(minWidth: 22, alignment: .leading)
+                        .padding(.top, 2)
+                    Text(d)
+                        .font(.atBody(15))
+                        .lineSpacing(5)
+                        .foregroundStyle(palette.ink)
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 14)
+                .overlay(alignment: .top) {
+                    if idx > 0 { QSDivider() }
+                }
+            }
+        }
+    }
+
+    private func quoteBlock(_ q: QuotedMoment) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            QSEyebrow("Quoted moments", color: palette.faint)
+                .padding(.bottom, 4)
+            HStack(alignment: .top, spacing: 0) {
+                Rectangle()
+                    .fill(palette.accent)
+                    .frame(width: 3)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("\u{201C}\(q.text)\u{201D}")
+                        .font(.atSerif(18))
+                        .italic()
+                        .lineSpacing(5)
+                        .tracking(-0.2)
+                        .foregroundStyle(palette.ink)
+                    Text("\(q.speaker.uppercased()) · \(q.time)")
+                        .font(.atMono(11, weight: .semibold))
+                        .tracking(0.3)
+                        .foregroundStyle(palette.faint)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    palette.surface
+                        .clipShape(
+                            UnevenRoundedRectangle(
+                                topLeadingRadius: 0,
+                                bottomLeadingRadius: 0,
+                                bottomTrailingRadius: AT.Radius.base * 1.2,
+                                topTrailingRadius: AT.Radius.base * 1.2,
+                                style: .continuous
+                            )
+                        )
+                )
+            }
+        }
+    }
+
+    private func listBlock(title: String, items: [String], mono: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            QSEyebrow(title, color: palette.faint)
+                .padding(.bottom, 10)
+            ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
+                HStack(alignment: .top, spacing: 12) {
+                    Circle()
+                        .fill(palette.faint)
+                        .frame(width: 4, height: 4)
+                        .padding(.top, 8)
+                    Text(item)
+                        .font(.atBody(14.5))
+                        .lineSpacing(4)
+                        .foregroundStyle(palette.mute)
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 8)
+                .overlay(alignment: .top) {
+                    if idx > 0 { QSDivider() }
+                }
+            }
+        }
+    }
+
+    private func generatedFooter(_ s: MeetingSummaryRecord) -> some View {
+        Text("Distilled in \(Int(s.generationLatencyMillis)) ms · \(s.generatedAt.formatted(.dateTime.hour().minute()))")
+            .font(.atMono(10, weight: .medium))
+            .tracking(0.4)
+            .foregroundStyle(palette.faint)
+    }
+
+    // MARK: - Transcript tab
+
     @ViewBuilder
-    private var chatView: some View {
+    private var transcriptTab: some View {
+        if !chunks.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                QSEyebrow("Full transcript · \(chunks.count) turns", color: palette.faint)
+                    .padding(.bottom, 16)
+                ForEach(chunks) { c in
+                    transcriptRow(c)
+                }
+            }
+        } else if !meeting.fullTranscript.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                QSEyebrow("Full transcript", color: palette.faint)
+                Text(meeting.fullTranscript)
+                    .font(.atBody(14.5))
+                    .lineSpacing(5)
+                    .foregroundStyle(palette.ink)
+            }
+        } else {
+            unavailable(
+                title: "No transcript captured",
+                body: "ASR didn't see any speech, or the recording was too short to chunk."
+            )
+        }
+    }
+
+    private func transcriptRow(_ c: TranscriptChunk) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(speakerLabel(for: c).uppercased())
+                    .font(.atMono(10.5, weight: .bold))
+                    .tracking(0.5)
+                    .foregroundStyle(palette.mute)
+                Text(formatTimecode(c.startSec))
+                    .font(.atMono(10, weight: .medium))
+                    .tracking(0.3)
+                    .foregroundStyle(palette.faint)
+            }
+            Text(c.text)
+                .font(.atBody(14.5))
+                .lineSpacing(5)
+                .foregroundStyle(palette.ink)
+        }
+        .padding(.bottom, 18)
+    }
+
+    // MARK: - Actions tab
+
+    @ViewBuilder
+    private var actionsTab: some View {
+        if let s = meeting.summary, !s.actionItems.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                QSEyebrow("\(s.actionItems.count) action items", color: palette.faint)
+                    .padding(.bottom, 14)
+                ForEach(Array(s.actionItems.enumerated()), id: \.element.id) { idx, item in
+                    actionRow(item, isFirst: idx == 0)
+                }
+            }
+        } else {
+            unavailable(
+                title: "No action items",
+                body: "The summary didn't surface anything assignable. Tap Ask this meeting to dig deeper."
+            )
+        }
+    }
+
+    private func actionRow(_ item: ActionItemRecord, isFirst: Bool) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(palette.line, lineWidth: 1.5)
+                .frame(width: 22, height: 22)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(item.description)
+                    .font(.atBody(15))
+                    .lineSpacing(4)
+                    .foregroundStyle(palette.ink)
+                if let owner = item.owner, !owner.isEmpty {
+                    HStack(spacing: 8) {
+                        Text("@\(owner.uppercased())")
+                            .font(.atMono(11, weight: .semibold))
+                            .tracking(0.3)
+                            .foregroundStyle(palette.accent)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 16)
+        .overlay(alignment: .top) {
+            if !isFirst { QSDivider() }
+        }
+    }
+
+    // MARK: - Unavailable
+
+    private func unavailable(title: String, body: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            QSEyebrow(title, color: palette.faint)
+            QSBody(text: body, color: palette.mute)
+        }
+        .padding(.vertical, 32)
+    }
+
+    // MARK: - Ask CTA
+
+    private var askButton: some View {
+        Button {
+            openAsk = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Ask this meeting")
+                    .font(.atBody(13, weight: .semibold))
+                    .tracking(-0.1)
+            }
+            .foregroundStyle(palette.bg)
+            .padding(.horizontal, 20)
+            .frame(height: 48)
+            .background(Capsule().fill(palette.ink))
+            .shadow(color: Color.black.opacity(0.18), radius: 12, x: 0, y: 12)
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var askDestination: some View {
         if let ctx = qaContext {
             ChatThreadView(
                 meeting: meeting,
@@ -97,63 +491,95 @@ struct MeetingDetailView: View {
                 repository: ctx.repository
             )
         } else {
-            ContentUnavailableView(
-                "Chat unavailable",
-                systemImage: "exclamationmark.bubble",
-                description: Text("The Q&A pipeline failed to initialize. Foundation Models may be unavailable on this device.")
+            unavailable(
+                title: "Ask unavailable",
+                body: "The Q&A pipeline failed to initialize. Foundation Models may be unavailable on this device."
             )
         }
     }
 
-    private var transcriptView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if meeting.fullTranscript.isEmpty {
-                Text("No transcript captured.")
-                    .foregroundStyle(.secondary)
-            } else {
-                Text(meeting.fullTranscript)
-                    .font(.system(.body, design: .rounded))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
+    // MARK: - Helpers
+
+    private var avatarPalette: [Color] {
+        [Color(hex: 0xC36A47), Color(hex: 0x7A8F66), Color(hex: 0x5C7691), Color(hex: 0xA88B6E)]
     }
 
-    @ViewBuilder
-    private func section(_ title: String, items: [String]) -> some View {
-        if !items.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title)
-                    .font(.headline)
-                ForEach(items, id: \.self) { item in
-                    HStack(alignment: .top, spacing: 8) {
-                        Text("•").foregroundStyle(.secondary)
-                        Text(item)
-                    }
-                }
-            }
-        }
+    private var speakerNames: [String] {
+        let labelled = meeting.speakers
+            .sorted { ($0.firstSeenSec ?? .infinity) < ($1.firstSeenSec ?? .infinity) }
+            .map(\.displayName)
+        if !labelled.isEmpty { return labelled }
+        let inferred = Array(Set(chunks.compactMap { $0.speakerName })).sorted()
+        return inferred
     }
 
-    @ViewBuilder
-    private func actionItemsSection(_ items: [ActionItemRecord]) -> some View {
-        if !items.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Action items")
-                    .font(.headline)
-                ForEach(items) { item in
-                    HStack(alignment: .top, spacing: 8) {
-                        Text("•").foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.description)
-                            if let owner = item.owner, !owner.isEmpty {
-                                Text(owner)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    private var chunks: [TranscriptChunk] {
+        meeting.chunks.sorted { $0.orderIndex < $1.orderIndex }
     }
+
+    private var actionCount: Int {
+        meeting.summary?.actionItems.count ?? 0
+    }
+
+    private var dateLabel: String {
+        meeting.recordedAt.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+    }
+
+    private var durationLabel: String {
+        let total = Int(meeting.durationSeconds.rounded())
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 { return "\(h)h \(m)m" }
+        if m > 0 { return String(format: "%dm %02ds", m, s) }
+        return "\(s)s"
+    }
+
+    private var computedTags: [String] {
+        var out: [String] = []
+        if let topic = meeting.summary?.topics.first { out.append(topic) }
+        if !speakerNames.isEmpty { out.append("\(speakerNames.count) voice\(speakerNames.count == 1 ? "" : "s")") }
+        if let s = meeting.summary, !s.actionItems.isEmpty {
+            out.append("\(s.actionItems.count) action\(s.actionItems.count == 1 ? "" : "s")")
+        }
+        return out
+    }
+
+    private func leadSentence(from s: MeetingSummaryRecord) -> String? {
+        if let d = s.decisions.first { return d }
+        if let t = s.topics.first { return t }
+        if let a = s.actionItems.first?.description { return a }
+        return nil
+    }
+
+    private var quotedMoment: QuotedMoment? {
+        guard let chunk = chunks.first(where: { !$0.text.isEmpty }) else { return nil }
+        let text = chunk.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        let speaker = chunk.speakerName ?? "Voice 1"
+        return QuotedMoment(text: text, speaker: speaker, time: formatTimecode(chunk.startSec))
+    }
+
+    private func speakerLabel(for c: TranscriptChunk) -> String {
+        c.speakerName ?? c.speakerId ?? "Voice"
+    }
+
+    private func formatTimecode(_ sec: Double) -> String {
+        let total = Int(sec.rounded())
+        let m = total / 60
+        let s = total % 60
+        return String(format: "%02d:%02d", m, s)
+    }
+
+    private func initials(for name: String) -> String {
+        let parts = name.split(separator: " ").prefix(2)
+        let chars = parts.compactMap { $0.first }.map { String($0) }
+        return chars.joined().uppercased()
+    }
+}
+
+private struct QuotedMoment: Hashable {
+    let text: String
+    let speaker: String
+    let time: String
 }
