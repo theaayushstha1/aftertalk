@@ -115,6 +115,16 @@ actor TTSWorker {
             return
         }
 
+        // AVAudioConverter can return success with frameLength == 0 on rate
+        // boundaries when the input chunk is too small to produce a single
+        // output frame. Scheduling a zero-frame buffer fires the completion
+        // callback synchronously — counting that against `pending` would
+        // un-balance `waitUntilDone()`. Skip it.
+        guard outBuffer.frameLength > 0 else {
+            log.info("convert produced 0 frames, skipping schedule")
+            return
+        }
+
         pending += 1
         // The completion handler is `@Sendable` and our `bufferDidFinish` is
         // actor-isolated, so we hop back into the actor inside the closure.
