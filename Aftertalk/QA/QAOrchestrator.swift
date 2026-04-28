@@ -150,6 +150,18 @@ final class QAOrchestrator {
         }
     }
 
+    /// Flip the audio session from clean-listening (`.measurement`) to
+    /// voice-chat with AEC. Called the moment we're about to speak so the
+    /// user heard a clean mic during the question and gets AEC during the
+    /// answer (so barge-in can ignore Kokoro's playback bleed).
+    private func enterSpeakingSession() async {
+        do {
+            try await AudioSessionManager.shared.configureForVoiceChat()
+        } catch {
+            log.warning("session flip to voiceChat failed: \(String(describing: error), privacy: .public) — continuing with current mode")
+        }
+    }
+
     /// Append `sentence` to the ordered speech chain and return immediately.
     /// The caller (LLM stream loop) keeps reading the next snapshot while
     /// Kokoro synthesises this sentence in the background. See `speakTail`.
@@ -204,6 +216,7 @@ final class QAOrchestrator {
         let sentences = detector.feed(text) + detector.finalize(text)
         guard !sentences.isEmpty else { return }
         stage = .speaking
+        await enterSpeakingSession()
         for sentence in sentences {
             if Task.isCancelled { break }
             speakChained(sentence)
@@ -267,6 +280,7 @@ final class QAOrchestrator {
             let disclaimer = "I don't have that in the meeting transcripts."
             stage = .speaking
             liveAnswer = disclaimer
+            await enterSpeakingSession()
             armBargeIn()
             await tts.speak(disclaimer)
             bargeIn.stop()
@@ -321,6 +335,7 @@ final class QAOrchestrator {
                 let sentences = detector.feed(text)
                 if !sentences.isEmpty, stage != .speaking {
                     stage = .speaking
+                    await enterSpeakingSession()
                     armBargeIn()
                 }
                 for sentence in sentences {
@@ -425,6 +440,7 @@ final class QAOrchestrator {
             let disclaimer = "I don't have that across your meetings yet."
             stage = .speaking
             liveAnswer = disclaimer
+            await enterSpeakingSession()
             armBargeIn()
             await tts.speak(disclaimer)
             bargeIn.stop()
@@ -515,6 +531,7 @@ final class QAOrchestrator {
                 let sentences = detector.feed(text)
                 if !sentences.isEmpty, stage != .speaking {
                     stage = .speaking
+                    await enterSpeakingSession()
                     armBargeIn()
                 }
                 for sentence in sentences {

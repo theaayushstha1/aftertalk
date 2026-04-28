@@ -68,7 +68,12 @@ final class QuestionASR {
         activeLine = ""
         liveTranscript = ""
         do {
-            try await AudioSessionManager.shared.configureForVoiceChat()
+            // Use the clean (`.measurement`-mode) path while the user is
+            // talking — Apple's voice-processing IO unit (engaged by
+            // `.voiceChat`) measurably degrades Moonshine accuracy on
+            // free-form questions. The orchestrator flips the session back
+            // to voiceChat before Kokoro speaks the answer.
+            try await AudioSessionManager.shared.configureForVoiceQuestion()
         } catch {
             throw .sessionFailed(error)
         }
