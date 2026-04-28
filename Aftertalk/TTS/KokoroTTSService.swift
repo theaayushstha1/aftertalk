@@ -141,13 +141,27 @@ actor KokoroTTSService: TTSService {
             directory: staging,
             computeUnits: .cpuAndGPU
         )
+        // Load ONLY the 5s variant. FluidAudio's `manager.initialize()`
+        // convenience init pulls every variant in the bundle (5s + 15s = ~620 MB
+        // resident graph), and one long sentence routed to 15s pushes peak past
+        // the foreground jetsam ceiling — that was the exact crash signature in
+        // the 18:08 OOM ("Chunk 1 using Kokoro 15s model" right before the
+        // "Terminated due to memory issue" alert). We constrain answers to ≤5s
+        // of audio per chunk via `SentenceBoundaryDetector.softWrapLimit`, so
+        // the 15s graph is never required.
         do {
-            try await manager.initialize()
+            let onlyFiveSecond: Set<ModelNames.TTS.Variant> = [.fiveSecond]
+            let models = try await TtsModels.download(
+                variants: onlyFiveSecond,
+                directory: staging,
+                computeUnits: .cpuAndGPU
+            )
+            try await manager.initialize(models: models)
         } catch {
             throw TTSError.initializationFailed(String(describing: error))
         }
         self.managerBox = ManagerBox(manager)
-        log.info("[BUILD-V2] Kokoro warm complete: voice=\(self.voice.fluidAudioId, privacy: .public) (initialize only — first ask pays G2P cold start)")
+        log.info("[BUILD-V3] Kokoro warm complete: voice=\(self.voice.fluidAudioId, privacy: .public) (5s variant only — saves ~310 MB)")
 
         // Note: a previous build also ran a dry `synthesizeDetailed("Aftertalk
         // diagnostic warmup live.")` here to pre-load G2P graphs + voice
@@ -177,7 +191,18 @@ actor KokoroTTSService: TTSService {
         guard let box = managerBox else { return }
 
         do {
-            let result = try await box.manager.synthesizeDetailed(text: trimmed)
+            // Pin every chunk to the 5s graph. Without this, FluidAudio's
+            // KokoroChunker picks .fifteenSecond whenever a sentence's phoneme
+            // count exceeds the 5s budget — and `model(for: .fifteenSecond)`
+            // lazy-loads the 15s graph (~310 MB resident) regardless of which
+            // variants we passed to `TtsModels.download`. That second graph
+            // is what was tipping us into jetsam during the first answer.
+            // SentenceBoundaryDetector caps utterances at 130 chars so
+            // anything we send fits comfortably in the 5s graph.
+            let result = try await box.manager.synthesizeDetailed(
+                text: trimmed,
+                variantPreference: .fiveSecond
+            )
             // The Kokoro synthesise call doesn't accept a Swift cancellation
             // token (it's a CoreML inference graph), so a cancel that lands
             // mid-call still produces a valid result. Drop it instead of

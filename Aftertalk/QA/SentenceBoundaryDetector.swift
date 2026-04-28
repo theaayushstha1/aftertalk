@@ -10,13 +10,20 @@ import Foundation
 ///
 /// Pure logic, no audio. Unit-testable.
 struct SentenceBoundaryDetector {
-    // Soft-wrap is a safety valve for runaway phrases the LLM never punctuates,
-    // not a stylistic chunker. Cutting at 80 chars on whitespace was sending
-    // Kokoro 3-4 fragments per natural sentence; each fragment got its own
-    // prosody attack + ~80 ms tail silence, which is why a 3-sentence answer
-    // sounded like a stuttering 12-clip mosaic. 240 keeps every realistic
-    // spoken sentence intact and only fires on actual model failures.
-    var softWrapLimit: Int = 240
+    // Soft-wrap is a safety valve for runaway phrases the LLM never punctuates.
+    // Two competing constraints set this knob:
+    //   - Too low (e.g. 80) chops natural sentences into 3-4 fragments and
+    //     introduces a prosody attack + ~80 ms tail silence per chunk, making
+    //     the answer sound stuttered.
+    //   - Too high routes long sentences to FluidAudio's Kokoro 15s graph,
+    //     which we no longer load (see `KokoroTTSService.performWarmInternal` —
+    //     loading both 5s + 15s graphs OOMed mid-answer with jetsam code 9).
+    // The 5s graph handles roughly ~140 phoneme IDs reliably; English averages
+    // ~1.5 phonemes per character, so 130 chars sits in a safe zone where it
+    // (a) only fires on long compound sentences that would clip 5s anyway,
+    // (b) keeps natural-length sentences intact, and
+    // (c) never trips a 15s graph load.
+    var softWrapLimit: Int = 130
     private(set) var cursor: String.Index?
 
     /// Feed the entire snapshot text (not the delta). Returns the new sentences
