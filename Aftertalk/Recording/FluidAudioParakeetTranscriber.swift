@@ -59,8 +59,15 @@ final class FluidAudioParakeetTranscriber: BatchASRService, @unchecked Sendable 
 
     func transcribe(audioFile: URL) async throws -> CanonicalTranscript {
         #if canImport(FluidAudio)
+        if asrManager == nil {
+            // Lazy warm: pipeline can call transcribe() directly without a prior
+            // warm() and we'll load the model on first use. Cheaper than failing
+            // the run, and matches the "service warms itself when it needs to"
+            // pattern callers expect.
+            try await warm()
+        }
         guard let manager = asrManager else {
-            throw BatchASRError.transcriptionFailed("warm() not called before transcribe()")
+            throw BatchASRError.transcriptionFailed("warm() failed to initialize Parakeet")
         }
 
         // Read the audio file and resample to mono Float32 16 kHz, the only
