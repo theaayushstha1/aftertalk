@@ -36,7 +36,12 @@ Aftertalk/Models/**/*.bin
 Aftertalk/Models/**/*.onnx
 Aftertalk/Models/**/*.mlpackage
 Aftertalk/Models/**/*.mlmodelc
-Aftertalk/Resources/Models/
+Aftertalk/Resources/Models/*
+# Keep the Pyannote placeholder folder so xcodegen's folder reference resolves
+# before fetch-pyannote-models.sh has been run.
+!Aftertalk/Resources/Models/speaker-diarization-coreml/
+Aftertalk/Resources/Models/speaker-diarization-coreml/*
+!Aftertalk/Resources/Models/speaker-diarization-coreml/.keep
 
 # Profiling raw outputs (chart pngs are committed)
 perf/*.csv
