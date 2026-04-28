@@ -49,12 +49,17 @@ struct MeetingDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear {
             // Real teardown: when the user pops back to the meetings list,
-            // cancel any ongoing Q&A and deactivate the .playAndRecord
-            // session so the mic indicator clears. Tab-switching within this
-            // view does NOT deactivate (see ChatThreadView.onDisappear).
+            // cancel any ongoing Q&A, drop Kokoro's ~300 MB CoreML graphs,
+            // and deactivate the .playAndRecord session so the mic indicator
+            // clears. Tab-switching inside this view does NOT deactivate (see
+            // ChatThreadView.onDisappear). Order matters: stop in-flight work
+            // first, then cleanup TTS (which shuts down its AVAudioEngine),
+            // *then* deactivate the session — flipping the last two gives us
+            // the "deactivate while I/O running" deadlock.
             if let ctx = qaContext {
                 Task {
                     await ctx.orchestrator.cancel()
+                    await ctx.orchestrator.cleanupTTS()
                     await AudioSessionManager.shared.deactivate()
                 }
             }

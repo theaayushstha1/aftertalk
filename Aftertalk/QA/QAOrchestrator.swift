@@ -94,6 +94,26 @@ final class QAOrchestrator {
         stage = .idle
     }
 
+    /// Lazy-warm the TTS pipeline. Called from ChatThreadView.task so Kokoro's
+    /// ~300 MB CoreML graph loads only when the user opens a chat tab — not at
+    /// app launch alongside the Foundation Models LLM (~3 GB). Stacking both at
+    /// launch was tipping iPhone Air over the iOS 26 foreground jetsam ceiling.
+    /// Idempotent: KokoroTTSService.warm() early-returns once isAvailable.
+    func warmTTS() async {
+        do {
+            try await tts.warm()
+        } catch {
+            log.warning("TTS warm failed: \(String(describing: error), privacy: .public) — will lazy-warm on first speak")
+        }
+    }
+
+    /// Tear down TTS and free the underlying model bytes. Called from
+    /// MeetingDetailView.onDisappear so leaving a meeting drops Kokoro's
+    /// CoreML graphs back to disk. Safe to call when nothing is loaded.
+    func cleanupTTS() async {
+        await tts.cleanup()
+    }
+
     /// Replays an already-generated answer through the TTS pipeline. Used by
     /// the chat bubble's speaker affordance so the user can re-listen to a
     /// previous Kokoro response without re-running the LLM. Splits on sentence

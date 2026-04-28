@@ -155,12 +155,16 @@ struct RootView: View {
         // present yet (fresh checkout, before Scripts/fetch-kokoro-models.sh
         // has run), fall back to AVSpeechSynthesizer so the build still runs
         // end-to-end. Same graceful-degradation pattern as the Parakeet path.
+        //
+        // We do NOT warm Kokoro at app launch anymore — its CoreML graphs
+        // sit at ~300 MB resident, and adding that to the Foundation Models
+        // LLM (~3 GB) + Pyannote/Parakeet during summary tipped iPhone Air
+        // foreground over the jetsam ceiling. ChatThreadView.task fires
+        // warm() lazily when the user opens a chat tab, so by the time
+        // they're done holding the mic it's hot.
         let tts: any TTSService
         if ModelLocator.kokoroBundleDirectory() != nil {
-            let kokoro = KokoroTTSService()
-            // Pre-warm in the background — first ask hits a hot model.
-            Task.detached { try? await kokoro.warm() }
-            tts = kokoro
+            tts = KokoroTTSService()
         } else {
             tts = AVSpeechSynthesizerTTS()
         }

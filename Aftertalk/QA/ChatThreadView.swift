@@ -40,6 +40,12 @@ struct ChatThreadView: View {
         .task {
             await ensureThread()
             await questionASR.prewarm()
+            // Lazy-warm Kokoro here instead of at app launch. Adding ~300 MB
+            // to the resident set during the recording → summary path was
+            // pushing iPhone Air over the iOS 26 foreground jetsam ceiling
+            // and crashing on the first chat question. By the time the user
+            // finishes holding the mic, this prewarm is hot.
+            await orchestrator.warmTTS()
         }
         .onDisappear {
             // Cancel any in-flight TTS so a tab switch interrupts cleanly,
