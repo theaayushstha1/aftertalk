@@ -16,35 +16,69 @@ enum AudioSessionError: Error, CustomStringConvertible {
 actor AudioSessionManager {
     static let shared = AudioSessionManager()
 
-    private var isConfigured = false
+    /// Tracks the active configuration so back-to-back transitions skip the
+    /// expensive setCategory + setActive dance when nothing actually changed.
+    enum Mode: Equatable { case none, recording, voiceChat }
+    private var mode: Mode = .none
     private var interruptionTask: Task<Void, Never>?
 
     private init() {}
 
+    /// Meeting-capture mode: `.record` + `.measurement` for clean,
+    /// minimally-processed mic input that keeps Parakeet/Moonshine WER low.
+    /// Output is disabled in this category — do **not** call this if a TTS
+    /// playback is about to follow.
     func configureForRecording() throws(AudioSessionError) {
-        // Day 1: ASR-only. Use .record + .measurement for clean mic capture.
-        // Day 4 swaps to .playAndRecord + .voiceChat when Kokoro TTS lands so AEC kicks in.
+        if mode == .recording { return }
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.record, mode: .measurement, options: [])
         } catch {
             throw .configureFailed(error)
         }
-
         do {
             try session.setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
             throw .activateFailed(error)
         }
+        mode = .recording
+        observeInterruptions()
+    }
 
-        isConfigured = true
+    /// Q&A mode: `.playAndRecord` + `.voiceChat` so we can listen to the user
+    /// AND speak the answer back through the same active session. AEC is
+    /// requested via `setPrefersEchoCancelledInput` so the mic can stay armed
+    /// during TTS playback for barge-in (Day 5). Order is the canonical one
+    /// from WWDC23/10235 — flipping it silently disables echo cancellation.
+    func configureForVoiceChat() throws(AudioSessionError) {
+        if mode == .voiceChat { return }
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(
+                .playAndRecord,
+                mode: .voiceChat,
+                options: [.defaultToSpeaker, .allowBluetooth]
+            )
+        } catch {
+            throw .configureFailed(error)
+        }
+        // setPrefersEchoCancelledInput is iOS 18+; available on our iOS 26 target.
+        if #available(iOS 18.0, *) {
+            try? session.setPrefersEchoCancelledInput(true)
+        }
+        do {
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+        } catch {
+            throw .activateFailed(error)
+        }
+        mode = .voiceChat
         observeInterruptions()
     }
 
     func deactivate() {
         let session = AVAudioSession.sharedInstance()
         try? session.setActive(false, options: .notifyOthersOnDeactivation)
-        isConfigured = false
+        mode = .none
         interruptionTask?.cancel()
         interruptionTask = nil
     }

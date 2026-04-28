@@ -21,8 +21,13 @@ enum QuestionASRError: Error, CustomStringConvertible {
 /// Records a short voice question and returns the final transcript on release.
 ///
 /// Owns its own MoonshineStreamer so it doesn't conflict with the meeting
-/// recorder's instance. Audio session is configured for `.record`, then
-/// deactivated on stop so AVSpeechSynthesizer can take over playback.
+/// recorder's instance. Audio session runs in `.playAndRecord` + `.voiceChat`
+/// for the entire Q&A turn so Kokoro can speak the answer back through the
+/// same active session — switching to `.record` would silently disable the
+/// output unit and `engine.start()` on TTSWorker would fail with -10851
+/// ("Format not supported", 0 Hz output rate). Session stays live across
+/// listen → think → speak; deactivation happens when ChatThreadView
+/// disappears.
 @MainActor
 final class QuestionASR {
     private let log = Logger(subsystem: "com.theaayushstha.aftertalk", category: "QuestionASR")
@@ -63,34 +68,33 @@ final class QuestionASR {
         activeLine = ""
         liveTranscript = ""
         do {
-            try await AudioSessionManager.shared.configureForRecording()
+            try await AudioSessionManager.shared.configureForVoiceChat()
         } catch {
             throw .sessionFailed(error)
         }
         do {
             try await streamer.start()
         } catch {
-            await AudioSessionManager.shared.deactivate()
             throw .asrFailed(error)
         }
         do {
             try capture.start(pump: pump)
         } catch {
             await streamer.stop()
-            await AudioSessionManager.shared.deactivate()
             throw .captureFailed(error)
         }
     }
 
-    /// Stops capture, drains the final ASR delta, deactivates the session, and
-    /// returns the question transcript.
+    /// Stops capture and drains the final ASR delta. Leaves the audio session
+    /// active in `.playAndRecord` + `.voiceChat` so Kokoro can play the
+    /// answer back through the same engine. The session is torn down by
+    /// `ChatThreadView`'s lifecycle when the user navigates away.
     func stop() async -> String {
         capture.stop()
         await streamer.stop()
         // Same drain budget as the meeting recorder: the final LineCompleted
         // has to traverse the dispatch queue and main-actor consumer.
         try? await Task.sleep(for: .milliseconds(300))
-        await AudioSessionManager.shared.deactivate()
         return liveTranscript
     }
 

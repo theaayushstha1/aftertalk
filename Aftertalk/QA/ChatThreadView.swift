@@ -41,6 +41,12 @@ struct ChatThreadView: View {
             await ensureThread()
             await questionASR.prewarm()
         }
+        .onDisappear {
+            // Tear down the .playAndRecord/.voiceChat session that QuestionASR
+            // brought up so the mic indicator stops blinking when the user
+            // navigates back to the meetings list.
+            Task { await AudioSessionManager.shared.deactivate() }
+        }
     }
 
     private var messageList: some View {
