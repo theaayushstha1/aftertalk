@@ -8,6 +8,10 @@ final class Meeting {
     var recordedAt: Date
     var durationSeconds: Double
     var audioPath: String?
+    /// File-system URL of the persisted WAV recording, when the capture
+    /// pipeline wrote one. Optional with a `nil` default so SwiftData can
+    /// migrate older meetings non-breakingly.
+    var audioFileURL: URL?
     var fullTranscript: String
 
     @Relationship(deleteRule: .cascade, inverse: \MeetingSummaryRecord.meeting)
@@ -28,6 +32,7 @@ final class Meeting {
         recordedAt: Date = .now,
         durationSeconds: Double = 0,
         audioPath: String? = nil,
+        audioFileURL: URL? = nil,
         fullTranscript: String = ""
     ) {
         self.id = id
@@ -35,6 +40,7 @@ final class Meeting {
         self.recordedAt = recordedAt
         self.durationSeconds = durationSeconds
         self.audioPath = audioPath
+        self.audioFileURL = audioFileURL
         self.fullTranscript = fullTranscript
     }
 }

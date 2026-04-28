@@ -3,17 +3,32 @@ import SwiftData
 
 @ModelActor
 actor MeetingsRepository {
-    func createMeeting(title: String, transcript: String, duration: Double) throws -> UUID {
+    func createMeeting(
+        title: String,
+        transcript: String,
+        duration: Double,
+        audioFileURL: URL? = nil
+    ) throws -> UUID {
         let meeting = Meeting(
             title: title,
             recordedAt: .now,
             durationSeconds: duration,
             audioPath: nil,
+            audioFileURL: audioFileURL,
             fullTranscript: transcript
         )
         modelContext.insert(meeting)
         try modelContext.save()
         return meeting.id
+    }
+
+    /// Replaces a meeting's transcript text in place. Used by the pipeline
+    /// to swap the streaming Moonshine output for the higher-quality batch
+    /// (Parakeet) transcript once it lands.
+    func updateTranscript(meetingId: UUID, transcript: String) throws {
+        guard let meeting = try fetchMeeting(meetingId) else { return }
+        meeting.fullTranscript = transcript
+        try modelContext.save()
     }
 
     func attachSummary(to meetingId: UUID, summary: MeetingSummary, latencyMillis: Double) throws {
