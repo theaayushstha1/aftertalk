@@ -4,6 +4,7 @@ import os
 enum ProcessingStage: Equatable, Sendable {
     case idle
     case savingMeeting
+    case polishingTranscript
     case chunking
     case embedding(progress: Int, total: Int)
     case summarizing
@@ -20,31 +21,78 @@ final class MeetingProcessingPipeline {
     private let repository: MeetingsRepository
     private let embeddings: any EmbeddingService
     private let llm: any LLMService
+    private let batchASR: (any BatchASRService)?
     private let chunker = ChunkIndexer()
 
     init(
         repository: MeetingsRepository,
         embeddings: any EmbeddingService,
-        llm: any LLMService
+        llm: any LLMService,
+        batchASR: (any BatchASRService)? = nil
     ) {
         self.repository = repository
         self.embeddings = embeddings
         self.llm = llm
+        self.batchASR = batchASR
     }
 
-    func process(transcript: String, durationSeconds: Double) async -> UUID? {
+    func process(
+        transcript: String,
+        durationSeconds: Double,
+        audioFileURL: URL? = nil
+    ) async -> UUID? {
         guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             stage = .failed("empty transcript")
             return nil
         }
         do {
             stage = .savingMeeting
-            let title = Self.suggestedTitle(from: transcript)
+            let initialTitle = Self.suggestedTitle(from: transcript)
             let meetingId = try await repository.createMeeting(
-                title: title,
+                title: initialTitle,
                 transcript: transcript,
-                duration: durationSeconds
+                duration: durationSeconds,
+                audioFileURL: audioFileURL
             )
+
+            // Streaming Moonshine output is the fallback. If the batch ASR
+            // service is wired and we have a WAV to read, run a higher-quality
+            // pass and replace the transcript before chunk/embed/summarize.
+            // Errors here are non-fatal: graceful degradation is the rule
+            // (e.g. dev builds without the model bundled).
+            var workingTranscript = transcript
+            var workingTitle = initialTitle
+            if let batchASR, let audioFileURL {
+                stage = .polishingTranscript
+                let started = ContinuousClock.now
+                do {
+                    let polished = try await batchASR.transcribe(audioFile: audioFileURL)
+                    let elapsedMs = started.duration(to: .now).aftertalkMillis
+                    let polishedText = polished.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !polishedText.isEmpty {
+                        workingTranscript = polishedText
+                        workingTitle = Self.suggestedTitle(from: polishedText)
+                        try await repository.updateTranscript(meetingId: meetingId, transcript: polishedText)
+                        if workingTitle != initialTitle {
+                            try? await repository.renameMeeting(meetingId, to: workingTitle)
+                        }
+                        log.info("polished transcript via \(polished.backend, privacy: .public) in \(Int(elapsedMs), privacy: .public) ms")
+                    } else {
+                        log.warning("batch ASR returned empty text; keeping streaming transcript")
+                    }
+                } catch let err as BatchASRError {
+                    switch err {
+                    case .modelMissing(let why):
+                        log.warning("batch ASR model missing — falling through: \(why, privacy: .public)")
+                    default:
+                        log.error("batch ASR failed — falling through: \(String(describing: err), privacy: .public)")
+                    }
+                } catch {
+                    log.error("batch ASR failed — falling through: \(String(describing: error), privacy: .public)")
+                }
+            }
+            let transcript = workingTranscript
+            let title = workingTitle
 
             stage = .chunking
             let drafts = chunker.chunks(from: transcript, durationSeconds: durationSeconds)
