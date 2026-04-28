@@ -91,6 +91,24 @@ final class QAOrchestrator {
         stage = .idle
     }
 
+    /// Replays an already-generated answer through the TTS pipeline. Used by
+    /// the chat bubble's speaker affordance so the user can re-listen to a
+    /// previous Kokoro response without re-running the LLM. Splits on sentence
+    /// boundaries so streaming TTS still works. Cancels any in-flight ask
+    /// first to avoid two voices overlapping.
+    func replay(_ text: String) async {
+        await cancel()
+        var detector = SentenceBoundaryDetector()
+        let sentences = detector.feed(text) + detector.finalize(text)
+        guard !sentences.isEmpty else { return }
+        stage = .speaking
+        for sentence in sentences {
+            if Task.isCancelled { break }
+            await tts.speak(sentence)
+        }
+        stage = .idle
+    }
+
     func ask(question: String, in meeting: Meeting) async -> QAResult? {
         await cancel()
         let task = Task<QAResult?, Never> { [weak self] in

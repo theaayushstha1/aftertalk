@@ -96,12 +96,41 @@ download_one() {
   fi
 }
 
+# Allowlist to keep the bundle near 700 MB. The HF repo also ships
+# uncompiled `.mlpackage`, ANE residency dumps, kokoro_24_*, kokoro_*_v2 and
+# kokoro_*_10s variants we don't load — pulling those balloons the bundle to
+# ~4 GB and breaks app installs on real devices.
+HF_INCLUDES=(
+  "kokoro_21_5s.mlmodelc/*"
+  "kokoro_21_15s.mlmodelc/*"
+  "G2PEncoder.mlmodelc/*"
+  "G2PDecoder.mlmodelc/*"
+  "MultilingualG2PEncoder.mlmodelc/*"
+  "MultilingualG2PDecoder.mlmodelc/*"
+  "g2p_vocab.json"
+  "vocab_index.json"
+  "us_lexicon_cache.json"
+  "us_gold.json"
+  "us_silver.json"
+  "gb_gold.json"
+  "gb_silver.json"
+  "voices/af_heart.json"
+)
+
 if command -v hf >/dev/null 2>&1; then
-  echo "[kokoro] using hf cli (faster, resumable)"
-  hf download "${REPO_ID}" --local-dir "${DEST}"
+  echo "[kokoro] using hf cli (faster, resumable, allowlist)"
+  hf_args=()
+  for pattern in "${HF_INCLUDES[@]}"; do
+    hf_args+=(--include "${pattern}")
+  done
+  hf download "${REPO_ID}" --local-dir "${DEST}" "${hf_args[@]}"
 elif command -v huggingface-cli >/dev/null 2>&1 && huggingface-cli --version >/dev/null 2>&1; then
-  echo "[kokoro] using huggingface-cli (legacy)"
-  huggingface-cli download "${REPO_ID}" --local-dir "${DEST}" --local-dir-use-symlinks False
+  echo "[kokoro] using huggingface-cli (legacy, allowlist)"
+  hf_args=()
+  for pattern in "${HF_INCLUDES[@]}"; do
+    hf_args+=(--include "${pattern}")
+  done
+  huggingface-cli download "${REPO_ID}" --local-dir "${DEST}" --local-dir-use-symlinks False "${hf_args[@]}"
 else
   echo "[kokoro] no hf cli, falling back to curl"
   for bundle in "${MODEL_BUNDLES[@]}"; do

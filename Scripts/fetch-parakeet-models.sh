@@ -64,12 +64,33 @@ download_one() {
   fi
 }
 
+# Allowlist. The HF repo also ships ParakeetEncoder.mlmodelc (1.1 GB),
+# ParakeetEncoder_v2 (565 MB), ParakeetEncoder_4bit_par (292 MB),
+# ParakeetDecoder, RNNTJoint and Melspectogram alternates that FluidAudio's
+# `Repo.parakeetV2` loader does not consume. Skipping them keeps the on-disk
+# bundle near 450 MB instead of 2.4 GB.
+HF_INCLUDES=(
+  "Preprocessor.mlmodelc/*"
+  "Encoder.mlmodelc/*"
+  "Decoder.mlmodelc/*"
+  "JointDecision.mlmodelc/*"
+  "parakeet_vocab.json"
+)
+
 if command -v hf >/dev/null 2>&1; then
-  echo "[parakeet] using hf cli (faster, resumable)"
-  hf download "${REPO_ID}" --local-dir "${DEST}"
+  echo "[parakeet] using hf cli (faster, resumable, allowlist)"
+  hf_args=()
+  for pattern in "${HF_INCLUDES[@]}"; do
+    hf_args+=(--include "${pattern}")
+  done
+  hf download "${REPO_ID}" --local-dir "${DEST}" "${hf_args[@]}"
 elif command -v huggingface-cli >/dev/null 2>&1 && huggingface-cli --version >/dev/null 2>&1; then
-  echo "[parakeet] using huggingface-cli (legacy)"
-  huggingface-cli download "${REPO_ID}" --local-dir "${DEST}" --local-dir-use-symlinks False
+  echo "[parakeet] using huggingface-cli (legacy, allowlist)"
+  hf_args=()
+  for pattern in "${HF_INCLUDES[@]}"; do
+    hf_args+=(--include "${pattern}")
+  done
+  huggingface-cli download "${REPO_ID}" --local-dir "${DEST}" --local-dir-use-symlinks False "${hf_args[@]}"
 else
   echo "[parakeet] no hf cli, falling back to curl"
   for bundle in "${MODEL_BUNDLES[@]}"; do

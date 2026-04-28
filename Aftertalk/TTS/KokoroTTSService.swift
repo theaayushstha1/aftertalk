@@ -97,7 +97,17 @@ actor KokoroTTSService: TTSService {
             throw TTSError.initializationFailed(String(describing: error))
         }
         self.managerBox = ManagerBox(manager)
-        log.info("Kokoro warm: voice=\(self.voice.fluidAudioId, privacy: .public) staging=\(staging.path, privacy: .public)")
+        // `manager.initialize()` only loads the TTS .mlmodelc graphs. The G2P
+        // models, voice embedding cache and lexicon JSONs lazy-load on first
+        // synthesis (~250-400 ms cold). Run a one-token dry synthesis here so
+        // the first user-visible ask after launch hits a fully hot pipeline.
+        // Output is discarded; we never enqueue it on the worker.
+        do {
+            _ = try await manager.synthesizeDetailed(text: "Hi.")
+            log.info("Kokoro warm: voice=\(self.voice.fluidAudioId, privacy: .public) staging=\(staging.path, privacy: .public) (G2P + voice cached)")
+        } catch {
+            log.warning("Kokoro G2P prewarm dry-synth failed: \(String(describing: error), privacy: .public) — falling through, first ask will pay cold-start")
+        }
         #else
         throw TTSError.modelMissing("FluidAudio module not available")
         #endif

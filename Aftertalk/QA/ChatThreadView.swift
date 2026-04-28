@@ -56,7 +56,7 @@ struct ChatThreadView: View {
                         .padding(.top, 40)
                     } else {
                         ForEach(messages) { msg in
-                            MessageBubble(message: msg)
+                            MessageBubble(message: msg, orchestrator: orchestrator)
                                 .id(msg.id)
                         }
                     }
@@ -209,6 +209,7 @@ struct ChatThreadView: View {
 
 private struct MessageBubble: View {
     let message: ChatMessage
+    let orchestrator: QAOrchestrator
 
     var body: some View {
         HStack {
@@ -219,12 +220,33 @@ private struct MessageBubble: View {
                     .padding(.vertical, 8)
                     .background(bubbleColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .foregroundStyle(message.role == "user" ? Color.white : Color.primary)
+                if message.role == "assistant" {
+                    speakerControl
+                }
                 if !message.citations.isEmpty {
                     citationsRow
                 }
             }
             if message.role != "user" { Spacer(minLength: 40) }
         }
+    }
+
+    private var speakerControl: some View {
+        Button {
+            Task { await orchestrator.replay(message.text) }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.caption)
+                Text("Replay")
+                    .font(.caption2)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(.thinMaterial, in: Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private var bubbleColor: Color {
