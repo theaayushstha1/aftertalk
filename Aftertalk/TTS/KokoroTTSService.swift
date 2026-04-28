@@ -106,8 +106,8 @@ actor KokoroTTSService: TTSService {
         // never exercises G2P and the cold-start tax just moves to the first
         // real question. Output is discarded; we never enqueue it on the worker.
         do {
-            _ = try await manager.synthesizeDetailed(text: "Aftertalk warmup phrase.")
-            log.info("Kokoro warm: voice=\(self.voice.fluidAudioId, privacy: .public) staging=\(staging.path, privacy: .public) (G2P + voice cached)")
+            _ = try await manager.synthesizeDetailed(text: "Aftertalk diagnostic warmup live.")
+            log.info("[BUILD-V2] Kokoro warm complete: voice=\(self.voice.fluidAudioId, privacy: .public) (G2P + voice cached)")
         } catch {
             log.warning("Kokoro G2P prewarm dry-synth failed: \(String(describing: error), privacy: .public) — falling through, first ask will pay cold-start")
         }

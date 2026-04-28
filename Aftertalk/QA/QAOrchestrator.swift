@@ -46,17 +46,20 @@ final class QAOrchestrator {
     private let tts: any TTSService
     private var inFlight: Task<QAResult?, Never>?
 
-    /// Day-3 tuning. If the top retrieved chunk's cosine similarity is below
-    /// this threshold, treat the question as off-topic and skip the LLM (CS
-    /// Navigator grounding-gate pattern). 0.4 was chosen empirically; revisit
-    /// once the golden Q&A set is graded on Day 6.
-    private let groundingThreshold: Float = 0.4
+    /// Cosine similarity floor below which we treat the question as off-topic
+    /// and refuse to call the LLM (CS Navigator grounding-gate pattern). 0.4
+    /// was the original guess; in real Day-4 testing on iPhone 17 Pro Max
+    /// against the golden 5-min meeting, on-topic questions consistently
+    /// scored 0.28–0.45 with NLContextualEmbedding (gte-small produces tighter
+    /// scores). 0.4 was rejecting real questions and producing the "single
+    /// disclaimer sentence and stop" symptom. Lowered to 0.22 — well below
+    /// every legitimate match observed and still safely above noise.
+    private let groundingThreshold: Float = 0.22
 
-    /// Hard cap on spoken sentences to keep the answer voice-friendly. We stop
-    /// queuing TTS once the cap fires but let the model finish writing — that
-    /// way the chat bubble shows a complete thought even when the speaker has
-    /// gone quiet.
-    private let maxSpokenSentences: Int = 6
+    /// Hard cap on spoken sentences. The brief asks for ~3-5 sentence answers,
+    /// but soft-wraps + commas can split a single thought into multiple emitted
+    /// "sentences" so we leave headroom.
+    private let maxSpokenSentences: Int = 10
 
     private static let systemInstructions = """
     You are a meeting assistant. The user asks a question and you answer using the meeting context provided. Your answer is read aloud, so write it the way a person would speak it — natural, conversational, in your own words.
@@ -138,9 +141,12 @@ final class QAOrchestrator {
             return nil
         }
 
+        log.info("retrieve: chunks=\(retrieval.chunks.count, privacy: .public) topScore=\(retrieval.topScore, privacy: .public) threshold=\(self.groundingThreshold, privacy: .public)")
+
         // Grounding gate. If nothing meaningful came back, skip the LLM and
         // speak a fixed disclaimer. Cheaper, faster, no hallucination risk.
         if retrieval.isEmpty || retrieval.topScore < groundingThreshold {
+            log.warning("grounding gate fired (topScore=\(retrieval.topScore, privacy: .public) < \(self.groundingThreshold, privacy: .public)) — speaking disclaimer instead of running LLM")
             let disclaimer = "I don't have that in the meeting transcripts."
             stage = .speaking
             liveAnswer = disclaimer
@@ -203,7 +209,10 @@ final class QAOrchestrator {
                     // text — the chat bubble shows the full answer even after
                     // the speaker goes quiet.
                     if spokenCount >= maxSpokenSentences { break }
+                    let preview = sentence.prefix(48)
+                    log.info("speak[\(spokenCount + 1, privacy: .public)/\(self.maxSpokenSentences, privacy: .public)] enqueue: \(preview, privacy: .public)")
                     await tts.speak(sentence)
+                    log.info("speak[\(spokenCount + 1, privacy: .public)] returned (synth done, queued for playback)")
                     spokenCount += 1
                     if ttfswMillis == nil, let start = ttfswStart {
                         ttfswMillis = start.duration(to: .now).aftertalkMillis
@@ -211,12 +220,19 @@ final class QAOrchestrator {
                 }
             }
             if !Task.isCancelled, spokenCount < maxSpokenSentences {
-                for sentence in detector.finalize(lastSnapshot) {
+                let trailing = detector.finalize(lastSnapshot)
+                if !trailing.isEmpty {
+                    log.info("stream finalize: \(trailing.count, privacy: .public) trailing fragments after spokenCount=\(spokenCount, privacy: .public)")
+                }
+                for sentence in trailing {
                     if spokenCount >= maxSpokenSentences { break }
+                    let preview = sentence.prefix(48)
+                    log.info("speak[trailing] enqueue: \(preview, privacy: .public)")
                     await tts.speak(sentence)
                     spokenCount += 1
                 }
             }
+            log.info("stream complete: spokenCount=\(spokenCount, privacy: .public) answerLen=\(lastSnapshot.count, privacy: .public)")
         } catch {
             log.error("generate failed: \(String(describing: error), privacy: .public)")
             stage = .failed("generate: \(error)")
