@@ -34,3 +34,24 @@ done
 123M params, 7.84% WER, ~157 MB. Used pre-day-3.10. Same file list as medium. Source: the same CDN with `small-streaming-en` in the path, or extract from `https://github.com/moonshine-ai/moonshine/releases/latest/download/ios-Transcriber.tar.gz`.
 
 Switching back: change `ModelLocator.moonshineModelDirectory` folder name and `MoonshineStreamer` `modelArch` to `.smallStreaming`. Two-line revert.
+
+## parakeet-tdt-0.6b-v2 (batch / canonical pass)
+
+Lives at `Aftertalk/Resources/Models/parakeet-tdt-0.6b-v2/` (note: `-coreml` suffix is stripped — FluidAudio's `Repo.parakeetV2.folderName` is `parakeet-tdt-0.6b-v2`). Used after the recording stops to regenerate a punctuation-correct, word-timestamped transcript that grounds summary + Q&A. The streaming Moonshine pass remains the live transcript shown during recording.
+
+Bundle: ~600-700 MB on disk (.mlmodelc dirs). Files are gitignored.
+
+To populate locally before building (one-time setup; the app never fetches at runtime):
+
+```bash
+./Scripts/fetch-parakeet-models.sh
+```
+
+Files expected under `Aftertalk/Resources/Models/parakeet-tdt-0.6b-v2/`:
+- `Preprocessor.mlmodelc/`
+- `Encoder.mlmodelc/`
+- `Decoder.mlmodelc/`
+- `JointDecision.mlmodelc/`
+- `parakeet_vocab.json`
+
+If the directory is empty at app launch, `FluidAudioParakeetTranscriber.warm()` throws `BatchASRError.modelMissing` cleanly — this is the expected CI behavior.
