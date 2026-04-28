@@ -135,7 +135,19 @@ struct RootView: View {
         }
 
         let retriever = HierarchicalRetriever(embeddings: embeddings, store: store)
-        let tts = AVSpeechSynthesizerTTS()
+        // Prefer FluidAudio Kokoro 82M (Day 4). If the bundled weights aren't
+        // present yet (fresh checkout, before Scripts/fetch-kokoro-models.sh
+        // has run), fall back to AVSpeechSynthesizer so the build still runs
+        // end-to-end. Same graceful-degradation pattern as the Parakeet path.
+        let tts: any TTSService
+        if ModelLocator.kokoroBundleDirectory() != nil {
+            let kokoro = KokoroTTSService()
+            // Pre-warm in the background — first ask hits a hot model.
+            Task.detached { try? await kokoro.warm() }
+            tts = kokoro
+        } else {
+            tts = AVSpeechSynthesizerTTS()
+        }
         let orchestrator = QAOrchestrator(retriever: retriever, tts: tts)
         let questionASR = QuestionASR()
         qa = QAContext(orchestrator: orchestrator, questionASR: questionASR, repository: repository)

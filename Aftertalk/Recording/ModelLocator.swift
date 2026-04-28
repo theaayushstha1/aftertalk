@@ -80,4 +80,47 @@ enum ModelLocator {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
+
+    /// Directory containing the FluidAudio Pyannote + WeSpeaker Core ML bundle.
+    ///
+    /// Unlike the Parakeet path, FluidAudio's
+    /// `DiarizerModels.load(localSegmentationModel:localEmbeddingModel:)`
+    /// takes per-file URLs to compiled `.mlmodelc` directories rather than a
+    /// repo folder. We still keep the two bundles colocated under one folder
+    /// so they ship together as a resource.
+    ///
+    /// Returns `nil` when neither the bundled folder nor the Application
+    /// Support fallback exists, mirroring the Parakeet pattern so callers can
+    /// gracefully fall through when the weights haven't been fetched (CI,
+    /// fresh checkout).
+    static func diarizerModelDirectory() -> URL? {
+        let folderName = "speaker-diarization-coreml"
+        let fm = FileManager.default
+        let bundled = Bundle.main.bundleURL
+            .appendingPathComponent(folderName, isDirectory: true)
+        if fm.fileExists(atPath: bundled.path) {
+            return bundled
+        }
+        let fallback = appSupport().appendingPathComponent(folderName, isDirectory: true)
+        if fm.fileExists(atPath: fallback.path) {
+            return fallback
+        }
+        return nil
+    }
+
+    /// URL of the Pyannote segmentation `.mlmodelc` bundle (compiled CoreML
+    /// directory). Returns `nil` when the model directory is empty.
+    static func segmentationModelURL() -> URL? {
+        guard let dir = diarizerModelDirectory() else { return nil }
+        let url = dir.appendingPathComponent("pyannote_segmentation.mlmodelc", isDirectory: true)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    /// URL of the WeSpeaker v2 embedding `.mlmodelc` bundle. Returns `nil`
+    /// when the model directory is empty.
+    static func embeddingModelURL() -> URL? {
+        guard let dir = diarizerModelDirectory() else { return nil }
+        let url = dir.appendingPathComponent("wespeaker_v2.mlmodelc", isDirectory: true)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
 }

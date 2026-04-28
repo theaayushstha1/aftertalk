@@ -7,14 +7,17 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		058DC526E036A7A429CA36F0 /* DiarizationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE18D6230E577B09F1E13F8B /* DiarizationService.swift */; };
 		082623100296B723A089A5B8 /* Models in Resources */ = {isa = PBXBuildFile; fileRef = A71B097C3BA077C23E2EEDCD /* Models */; };
 		0D00C506B7ADC6656BA7E7AF /* SummaryGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FD391B1C081F34FA027701 /* SummaryGenerator.swift */; };
+		0ED37517486B619CDC57B01B /* KokoroTTSService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E158C2B0019B25DB7AF830B1 /* KokoroTTSService.swift */; };
 		12ABAA6487034156B64637B9 /* PerfMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5682160854DF68EED3EC9F31 /* PerfMonitor.swift */; };
 		14E59B9608007F764650F2C8 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = C1BAF9172392BE9252C0B650 /* FluidAudio */; };
 		1B4DAC95996E0F26EE9DA080 /* MoonshineStreamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7938E34AB08544C4721C38EC /* MoonshineStreamer.swift */; };
 		1B574DF9C5EB6487440F8193 /* MeetingProcessingPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 207DC58B8313D5E917FC61DD /* MeetingProcessingPipeline.swift */; };
 		1CCAE15EFC6F2081AE3ABCAD /* MeetingsRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21439AE268E8977B668ABE10 /* MeetingsRepository.swift */; };
 		1ECD03C982A0A7CC37390123 /* ChunkIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12CE4DE71780FBF89F329ECF /* ChunkIndexer.swift */; };
+		22C743FAC9EEB9AA7849890F /* TTSWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F05E02C550A2CE27398F6A16 /* TTSWorker.swift */; };
 		310FCE3053C44A06CA540486 /* PrivacyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99862B2E5CBEF50199E2EB90 /* PrivacyMonitor.swift */; };
 		34114B893F140710EA8BE803 /* MeetingsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97DA4F3A5B7929B96475F1C /* MeetingsListView.swift */; };
 		38C0ACF29F72EA68849C825E /* QuestionASR.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B91B8023F976CD72C5925C7 /* QuestionASR.swift */; };
@@ -22,8 +25,10 @@
 		43E41EC61BEEBDE7E303D4D1 /* TTSService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75EB00EA79CC6EBF481D45C9 /* TTSService.swift */; };
 		4B7876DB7DC4BD31E4809923 /* AudioSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD030A4E86E5D2FEAD786508 /* AudioSessionManager.swift */; };
 		4F6A4CC51B8108497C1EDB8D /* DebugOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E66BD314C64CDF3E3EF026A /* DebugOverlay.swift */; };
+		5186CA58F5105FB6FF3B3995 /* kokoro-82m-coreml in Resources */ = {isa = PBXBuildFile; fileRef = 1A74B7708239C81455540EDD /* kokoro-82m-coreml */; };
 		5B82CF57E29C433EB2E00959 /* EmbeddingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45B8ABF908DE5C6BF3378C9C /* EmbeddingService.swift */; };
 		679EFAAFD1F4515F00908D75 /* ModelContainer+Aftertalk.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FF205284A7B13C43BF3011C /* ModelContainer+Aftertalk.swift */; };
+		6CDB55AF8B5F579F8C1AB298 /* PyannoteDiarizationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7750B34FC2A716663857BC39 /* PyannoteDiarizationService.swift */; };
 		6E6CC375C859C8DED34236F2 /* FluidAudioParakeetTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED3F50198AE42417ABCD46DA /* FluidAudioParakeetTranscriber.swift */; };
 		7036F5A3AAE2FAD466CB6F75 /* MeetingDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02631AEB240C134B4DDD9B11 /* MeetingDetailView.swift */; };
 		7B72FA3541B06F22DCD748A3 /* QAOrchestrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B11757A1FB86E399551FA5E /* QAOrchestrator.swift */; };
@@ -46,6 +51,8 @@
 		D89F2266CDA1F8D6FDC3BA12 /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F5C57518CD7B9882CEA987 /* AudioCaptureService.swift */; };
 		D8F48C67AD22840B58605D3E /* TranscriptChunk.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6826ECA346535661384A4E01 /* TranscriptChunk.swift */; };
 		DF66AE7FE14A561803682DDC /* AftertalkApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23238DEF6909E2FD5F72A8D4 /* AftertalkApp.swift */; };
+		E4152F9F2F1EC7E9B604A23C /* KokoroVoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9825B712AA33D92AF42EEFF5 /* KokoroVoice.swift */; };
+		E826DDD81011FF66891C2D38 /* DiarizationReconciler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A25350B42E969CA49D84CC16 /* DiarizationReconciler.swift */; };
 		E9D5B71B4124E0ED927EB66E /* Meeting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9451D0F32DEA17F1B90CBDD7 /* Meeting.swift */; };
 		EC45699155EBEA6B199AC1C4 /* SentenceBoundaryDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 883F465ABF4FC5424D592087 /* SentenceBoundaryDetector.swift */; };
 		ED479A8179B605CA8725F168 /* MoonshineVoice in Frameworks */ = {isa = PBXBuildFile; productRef = 58A06F94C73C33F95A02D67F /* MoonshineVoice */; };
@@ -55,6 +62,7 @@
 /* Begin PBXFileReference section */
 		02631AEB240C134B4DDD9B11 /* MeetingDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingDetailView.swift; sourceTree = "<group>"; };
 		12CE4DE71780FBF89F329ECF /* ChunkIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChunkIndexer.swift; sourceTree = "<group>"; };
+		1A74B7708239C81455540EDD /* kokoro-82m-coreml */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "kokoro-82m-coreml"; path = "Aftertalk/Resources/Models/kokoro-82m-coreml"; sourceTree = SOURCE_ROOT; };
 		1B1B0BEC1102036E81A4290D /* ModelLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelLocator.swift; sourceTree = "<group>"; };
 		207DC58B8313D5E917FC61DD /* MeetingProcessingPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingProcessingPipeline.swift; sourceTree = "<group>"; };
 		21439AE268E8977B668ABE10 /* MeetingsRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsRepository.swift; sourceTree = "<group>"; };
@@ -72,6 +80,7 @@
 		6812DF977A4E1532C1AECFFE /* QAContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QAContext.swift; sourceTree = "<group>"; };
 		6826ECA346535661384A4E01 /* TranscriptChunk.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptChunk.swift; sourceTree = "<group>"; };
 		75EB00EA79CC6EBF481D45C9 /* TTSService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TTSService.swift; sourceTree = "<group>"; };
+		7750B34FC2A716663857BC39 /* PyannoteDiarizationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PyannoteDiarizationService.swift; sourceTree = "<group>"; };
 		7938E34AB08544C4721C38EC /* MoonshineStreamer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoonshineStreamer.swift; sourceTree = "<group>"; };
 		7E66BD314C64CDF3E3EF026A /* DebugOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugOverlay.swift; sourceTree = "<group>"; };
 		7F7F2DD575356414495ABE23 /* RecordingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingViewModel.swift; sourceTree = "<group>"; };
@@ -80,9 +89,11 @@
 		8B11757A1FB86E399551FA5E /* QAOrchestrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QAOrchestrator.swift; sourceTree = "<group>"; };
 		9451D0F32DEA17F1B90CBDD7 /* Meeting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Meeting.swift; sourceTree = "<group>"; };
 		96FD391B1C081F34FA027701 /* SummaryGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryGenerator.swift; sourceTree = "<group>"; };
+		9825B712AA33D92AF42EEFF5 /* KokoroVoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KokoroVoice.swift; sourceTree = "<group>"; };
 		99862B2E5CBEF50199E2EB90 /* PrivacyMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyMonitor.swift; sourceTree = "<group>"; };
 		9A1A28F38945D7CCCC1A8840 /* HierarchicalRetriever.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HierarchicalRetriever.swift; sourceTree = "<group>"; };
 		9A73343EC50EF82FE035BFF3 /* ContextPacker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextPacker.swift; sourceTree = "<group>"; };
+		A25350B42E969CA49D84CC16 /* DiarizationReconciler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiarizationReconciler.swift; sourceTree = "<group>"; };
 		A3E172A92CE552CA187F610F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A462430E8BA1CA4361A61B3B /* Aftertalk.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Aftertalk.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A71B097C3BA077C23E2EEDCD /* Models */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Models; path = Aftertalk/Models; sourceTree = SOURCE_ROOT; };
@@ -94,8 +105,11 @@
 		D6CD3F62BBAA845BDEBEEBA6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		DEADFEB1B811F46CB0A86D15 /* MeetingSummaryRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSummaryRecord.swift; sourceTree = "<group>"; };
 		E001CBAE0B65AD79BBFBD529 /* SpeakerLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerLabel.swift; sourceTree = "<group>"; };
+		E158C2B0019B25DB7AF830B1 /* KokoroTTSService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KokoroTTSService.swift; sourceTree = "<group>"; };
 		ED3F50198AE42417ABCD46DA /* FluidAudioParakeetTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FluidAudioParakeetTranscriber.swift; sourceTree = "<group>"; };
 		F02051A737B2B63781E21A1D /* PrivacyBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyBadge.swift; sourceTree = "<group>"; };
+		F05E02C550A2CE27398F6A16 /* TTSWorker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TTSWorker.swift; sourceTree = "<group>"; };
+		FE18D6230E577B09F1E13F8B /* DiarizationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiarizationService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -116,9 +130,11 @@
 			children = (
 				52F5C57518CD7B9882CEA987 /* AudioCaptureService.swift */,
 				398184C12D895ABECE14E819 /* BatchASRService.swift */,
+				FE18D6230E577B09F1E13F8B /* DiarizationService.swift */,
 				ED3F50198AE42417ABCD46DA /* FluidAudioParakeetTranscriber.swift */,
 				1B1B0BEC1102036E81A4290D /* ModelLocator.swift */,
 				7938E34AB08544C4721C38EC /* MoonshineStreamer.swift */,
+				7750B34FC2A716663857BC39 /* PyannoteDiarizationService.swift */,
 				7F7F2DD575356414495ABE23 /* RecordingViewModel.swift */,
 			);
 			path = Recording;
@@ -171,7 +187,10 @@
 			isa = PBXGroup;
 			children = (
 				BD030A4E86E5D2FEAD786508 /* AudioSessionManager.swift */,
+				E158C2B0019B25DB7AF830B1 /* KokoroTTSService.swift */,
+				9825B712AA33D92AF42EEFF5 /* KokoroVoice.swift */,
 				75EB00EA79CC6EBF481D45C9 /* TTSService.swift */,
+				F05E02C550A2CE27398F6A16 /* TTSWorker.swift */,
 			);
 			path = TTS;
 			sourceTree = "<group>";
@@ -203,6 +222,7 @@
 			isa = PBXGroup;
 			children = (
 				12CE4DE71780FBF89F329ECF /* ChunkIndexer.swift */,
+				A25350B42E969CA49D84CC16 /* DiarizationReconciler.swift */,
 				207DC58B8313D5E917FC61DD /* MeetingProcessingPipeline.swift */,
 				4F88D7B327555BB7CD4DC1F1 /* MeetingSummary.swift */,
 				96FD391B1C081F34FA027701 /* SummaryGenerator.swift */,
@@ -247,6 +267,7 @@
 		A6DFE28A76D07F1A1C86C3B8 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				1A74B7708239C81455540EDD /* kokoro-82m-coreml */,
 				B34378858924C7E089B40789 /* parakeet-tdt-0.6b-v2 */,
 			);
 			path = Models;
@@ -341,6 +362,7 @@
 			files = (
 				AE80FB8F2830D07E921AE5A9 /* Assets.xcassets in Resources */,
 				082623100296B723A089A5B8 /* Models in Resources */,
+				5186CA58F5105FB6FF3B3995 /* kokoro-82m-coreml in Resources */,
 				BB45EC15A784A16A1436149E /* parakeet-tdt-0.6b-v2 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -361,9 +383,13 @@
 				1ECD03C982A0A7CC37390123 /* ChunkIndexer.swift in Sources */,
 				8C58452B64254536FDBF7357 /* ContextPacker.swift in Sources */,
 				4F6A4CC51B8108497C1EDB8D /* DebugOverlay.swift in Sources */,
+				E826DDD81011FF66891C2D38 /* DiarizationReconciler.swift in Sources */,
+				058DC526E036A7A429CA36F0 /* DiarizationService.swift in Sources */,
 				5B82CF57E29C433EB2E00959 /* EmbeddingService.swift in Sources */,
 				6E6CC375C859C8DED34236F2 /* FluidAudioParakeetTranscriber.swift in Sources */,
 				CF53D1E67434BB25A88B6153 /* HierarchicalRetriever.swift in Sources */,
+				0ED37517486B619CDC57B01B /* KokoroTTSService.swift in Sources */,
+				E4152F9F2F1EC7E9B604A23C /* KokoroVoice.swift in Sources */,
 				E9D5B71B4124E0ED927EB66E /* Meeting.swift in Sources */,
 				7036F5A3AAE2FAD466CB6F75 /* MeetingDetailView.swift in Sources */,
 				1B574DF9C5EB6487440F8193 /* MeetingProcessingPipeline.swift in Sources */,
@@ -378,6 +404,7 @@
 				12ABAA6487034156B64637B9 /* PerfMonitor.swift in Sources */,
 				CA8D590972EFCBF8B21505DC /* PrivacyBadge.swift in Sources */,
 				310FCE3053C44A06CA540486 /* PrivacyMonitor.swift in Sources */,
+				6CDB55AF8B5F579F8C1AB298 /* PyannoteDiarizationService.swift in Sources */,
 				3B43BAE51490BD9B154C227A /* QAContext.swift in Sources */,
 				7B72FA3541B06F22DCD748A3 /* QAOrchestrator.swift in Sources */,
 				38C0ACF29F72EA68849C825E /* QuestionASR.swift in Sources */,
@@ -388,6 +415,7 @@
 				C86AA3217348D7E7FF23F765 /* SpeakerLabel.swift in Sources */,
 				0D00C506B7ADC6656BA7E7AF /* SummaryGenerator.swift in Sources */,
 				43E41EC61BEEBDE7E303D4D1 /* TTSService.swift in Sources */,
+				22C743FAC9EEB9AA7849890F /* TTSWorker.swift in Sources */,
 				D8F48C67AD22840B58605D3E /* TranscriptChunk.swift in Sources */,
 				B7D8135A1741CA52EE238534 /* VectorStore.swift in Sources */,
 			);

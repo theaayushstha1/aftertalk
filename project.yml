@@ -43,6 +43,10 @@ targets:
         type: folder
         buildPhase: resources
         optional: true
+      - path: Aftertalk/Resources/Models/kokoro-82m-coreml
+        type: folder
+        buildPhase: resources
+        optional: true
     dependencies:
       - package: Moonshine
         product: MoonshineVoice
