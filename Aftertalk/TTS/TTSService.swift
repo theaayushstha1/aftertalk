@@ -3,10 +3,21 @@ import Foundation
 import os
 
 protocol TTSService: AnyObject, Sendable {
+    /// Optional pre-warm hook for backends that need to load Core ML graphs
+    /// before the first speak call. Default impl is a no-op so the existing
+    /// AVSpeechSynthesizer fallback doesn't have to care.
+    func warm() async throws
     /// Queue a sentence for playback. Sentences play in order.
     func speak(_ sentence: String) async
     /// Stop immediately, dropping any queued text. Used for barge-in (Day 5).
     func stop() async
+    /// Tear down loaded models / audio nodes. No-op for trivial backends.
+    func cleanup() async
+}
+
+extension TTSService {
+    func warm() async throws {}
+    func cleanup() async {}
 }
 
 /// Day 3 placeholder TTS. AVSpeechSynthesizer manages its own audio session, so
