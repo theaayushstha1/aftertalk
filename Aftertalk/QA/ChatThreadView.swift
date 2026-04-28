@@ -42,10 +42,17 @@ struct ChatThreadView: View {
             await questionASR.prewarm()
         }
         .onDisappear {
-            // Tear down the .playAndRecord/.voiceChat session that QuestionASR
-            // brought up so the mic indicator stops blinking when the user
-            // navigates back to the meetings list.
-            Task { await AudioSessionManager.shared.deactivate() }
+            // Cancel any in-flight TTS so a tab switch interrupts cleanly,
+            // but DO NOT deactivate the audio session here. This view
+            // unmounts every time the user toggles between the Summary /
+            // Transcript / Chat segmented picker. If we deactivated while
+            // TTSWorker's AVAudioEngine is still running, the next setActive
+            // fails with NSOSStatusErrorDomain Code=561017449 (CLAUDE.md
+            // invariant: "do NOT deactivate the audio session while I/O is
+            // running"). MeetingDetailView.onDisappear takes care of the
+            // real teardown when the user navigates back to the meetings
+            // list.
+            Task { await orchestrator.cancel() }
         }
     }
 

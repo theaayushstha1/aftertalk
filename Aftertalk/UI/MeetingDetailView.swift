@@ -47,6 +47,18 @@ struct MeetingDetailView: View {
         }
         .navigationTitle(meeting.title)
         .navigationBarTitleDisplayMode(.inline)
+        .onDisappear {
+            // Real teardown: when the user pops back to the meetings list,
+            // cancel any ongoing Q&A and deactivate the .playAndRecord
+            // session so the mic indicator clears. Tab-switching within this
+            // view does NOT deactivate (see ChatThreadView.onDisappear).
+            if let ctx = qaContext {
+                Task {
+                    await ctx.orchestrator.cancel()
+                    await AudioSessionManager.shared.deactivate()
+                }
+            }
+        }
     }
 
     @ViewBuilder
