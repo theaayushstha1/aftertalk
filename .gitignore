@@ -42,6 +42,11 @@ Aftertalk/Resources/Models/*
 !Aftertalk/Resources/Models/speaker-diarization-coreml/
 Aftertalk/Resources/Models/speaker-diarization-coreml/*
 !Aftertalk/Resources/Models/speaker-diarization-coreml/.keep
+# Keep the Kokoro placeholder folder so xcodegen's folder reference resolves
+# before fetch-kokoro-models.sh has been run.
+!Aftertalk/Resources/Models/kokoro-82m-coreml/
+Aftertalk/Resources/Models/kokoro-82m-coreml/*
+!Aftertalk/Resources/Models/kokoro-82m-coreml/.keep
 
 # Profiling raw outputs (chart pngs are committed)
 perf/*.csv
