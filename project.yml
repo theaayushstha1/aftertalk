@@ -23,6 +23,9 @@ packages:
   Moonshine:
     url: https://github.com/moonshine-ai/moonshine-swift.git
     from: 0.0.59
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio
+    from: 0.12.0
 
 targets:
   Aftertalk:
@@ -32,12 +35,19 @@ targets:
       - path: Aftertalk
         excludes:
           - "Models/**"
+          - "Resources/Models/**"
       - path: Aftertalk/Models
         type: folder
         buildPhase: resources
+      - path: Aftertalk/Resources/Models/parakeet-tdt-0.6b-v2
+        type: folder
+        buildPhase: resources
+        optional: true
     dependencies:
       - package: Moonshine
         product: MoonshineVoice
+      - package: FluidAudio
+        product: FluidAudio
     info:
       path: Aftertalk/Info.plist
       properties:
