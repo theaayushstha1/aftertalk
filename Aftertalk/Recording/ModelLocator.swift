@@ -71,13 +71,23 @@ enum ModelLocator {
         return nil
     }
 
-    /// Writable staging directory the Kokoro service hands to FluidAudio. Lives
-    /// under Application Support and gets a `Models/kokoro/` subtree wired to
-    /// the bundled `.mlmodelc` directories via symlinks (cheap, no on-disk
-    /// duplication).
+    /// Writable staging directory the Kokoro service hands to FluidAudio.
+    ///
+    /// FluidAudio's G2P, voice-pack and vocab loaders **ignore** the `directory:`
+    /// argument passed to `KokoroTtsManager` — they hardcode their lookups to
+    /// `TtsModels.cacheDirectoryURL()`, which on iOS resolves to
+    /// `<Caches>/fluidaudio/`. We therefore stage into that exact directory so
+    /// that `<Caches>/fluidaudio/Models/kokoro/g2p_vocab.json` (and friends)
+    /// resolve at runtime. The `directory:` argument we still pass to the
+    /// manager is then redundant but harmless — kept consistent so the TTS
+    /// variant `.mlmodelc` lookups also succeed if FluidAudio adds a code path
+    /// that honors it.
     static func kokoroStagingDirectory() -> URL {
-        let dir = appSupport().appendingPathComponent("KokoroStage", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let fm = FileManager.default
+        let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let dir = caches.appendingPathComponent("fluidaudio", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
 

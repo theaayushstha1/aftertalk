@@ -54,15 +54,31 @@ MLMODELC_FILES=(
   "weights/weight.bin"
 )
 
-# Top-level assets shipped alongside the bundles.
+# Top-level assets shipped alongside the bundles. FluidAudio's Kokoro pipeline
+# loads these directly from `<Caches>/fluidaudio/Models/kokoro/`:
+# - `g2p_vocab.json`        — G2P grapheme/phoneme tables (G2PModel.swift:171)
+# - `vocab_index.json`      — phoneme → token id lookup (KokoroVocabulary.swift:28)
+# - `us_lexicon_cache.json` — preferred US English lexicon (KokoroSynthesizer+LexiconCache.swift)
+# - `us_gold.json` / `us_silver.json` — fallback US lexicons
+# - `gb_gold.json` / `gb_silver.json` — UK lexicons
+# Without these the app would have to hit the network at first synthesis,
+# which violates our airplane-mode invariant.
 TOP_LEVEL_FILES=(
   "g2p_vocab.json"
+  "vocab_index.json"
+  "us_lexicon_cache.json"
+  "us_gold.json"
+  "us_silver.json"
+  "gb_gold.json"
+  "gb_silver.json"
 )
 
-# Default voice pack (af_heart). The repo also ships ~50 other voices; we only
-# need the one we ship with the demo. Add more here if/when we A/B voices.
+# Default voice pack (af_heart). FluidAudio's voice loader expects the JSON
+# variant (KokoroSynthesizer+VoiceEmbeddings.swift:28) — the `.bin` files at
+# the same path are unused by the public API. Add more voice ids here if we
+# audition different voices for the demo.
 VOICE_FILES=(
-  "voices/af_heart.bin"
+  "voices/af_heart.json"
 )
 
 download_one() {
