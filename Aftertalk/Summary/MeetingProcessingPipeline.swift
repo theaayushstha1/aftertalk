@@ -229,6 +229,15 @@ final class MeetingProcessingPipeline {
                 roster: rosterByspeakerId
             )
 
+            // Foundation Models summary + chunk embedding share no data, so we
+            // run them concurrently. Foundation Models is ANE-bound (~30 tok/s,
+            // ~400 output tokens ≈ 13 s pure model time + first-token overhead);
+            // gte-small is GPU-bound and processes a 30-min meeting's chunks in
+            // ~2-3 s. Running them serially the user waits ~17 s + ~3 s; running
+            // in parallel they wait ≈ max of the two. Net: 2-3 s shaved off the
+            // post-recording stall, no quality cost.
+            async let summaryResult = llm.generateSummary(transcript: summaryTranscript)
+
             stage = .embedding(progress: 0, total: drafts.count)
             var vectors: [[Float]] = []
             vectors.reserveCapacity(drafts.count)
@@ -246,10 +255,11 @@ final class MeetingProcessingPipeline {
             try await repository.attachChunks(to: meetingId, drafts: drafts, embeddings: vectors)
 
             stage = .summarizing
-            let started = ContinuousClock.now
-            let result = try await llm.generateSummary(transcript: summaryTranscript)
-            let elapsed = started.duration(to: .now)
-            let latency = elapsed.aftertalkMillis
+            let result = try await summaryResult
+            // `result.latencyMillis` is the LLM's own measured wallclock — the
+            // honest perf number for the badge, even though we ran it concurrent
+            // with embedding above.
+            let latency = result.latencyMillis
             try await repository.attachSummary(to: meetingId, summary: result.summary, latencyMillis: latency)
 
             // Meeting-level embedding now uses the structured summary fields
