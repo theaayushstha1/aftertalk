@@ -64,11 +64,14 @@ download_one() {
   fi
 }
 
-if command -v huggingface-cli >/dev/null 2>&1; then
-  echo "[parakeet] using huggingface-cli (faster, resumable)"
+if command -v hf >/dev/null 2>&1; then
+  echo "[parakeet] using hf cli (faster, resumable)"
+  hf download "${REPO_ID}" --local-dir "${DEST}"
+elif command -v huggingface-cli >/dev/null 2>&1 && huggingface-cli --version >/dev/null 2>&1; then
+  echo "[parakeet] using huggingface-cli (legacy)"
   huggingface-cli download "${REPO_ID}" --local-dir "${DEST}" --local-dir-use-symlinks False
 else
-  echo "[parakeet] huggingface-cli not found, falling back to curl"
+  echo "[parakeet] no hf cli, falling back to curl"
   for bundle in "${MODEL_BUNDLES[@]}"; do
     for inner in "${MLMODELC_FILES[@]}"; do
       download_one "${bundle}/${inner}"
