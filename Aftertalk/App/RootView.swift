@@ -17,6 +17,9 @@ struct RootView: View {
 
             MeetingsListView(qaContext: qa)
                 .tabItem { Label("Meetings", systemImage: "list.bullet.rectangle.portrait") }
+
+            GlobalChatView(qaContext: qa)
+                .tabItem { Label("Ask", systemImage: "rectangle.stack.badge.person.crop") }
         }
         .task {
             configurePipeline()

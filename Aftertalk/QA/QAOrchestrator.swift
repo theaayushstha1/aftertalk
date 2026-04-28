@@ -45,6 +45,17 @@ final class QAOrchestrator {
     private let packer: ContextPacker
     private let tts: any TTSService
     private var inFlight: Task<QAResult?, Never>?
+    /// Tail of an ordered chain of speech tasks. Each call to `speakChained`
+    /// appends a Task that awaits the previous tail before invoking the
+    /// underlying actor-isolated `tts.speak`. The orchestrator never blocks on
+    /// synthesis: the LLM stream keeps draining + the sentence detector keeps
+    /// finding boundaries while Kokoro synthesises previous sentences in the
+    /// background. Output order is preserved because each Task awaits its
+    /// predecessor's `.value` before issuing its own `speak`. TTSWorker's FIFO
+    /// `scheduleBuffer` queue then plays them gaplessly — sentence N+1's PCM
+    /// is already on the player by the time N's tail finishes, so AVPlayerNode
+    /// never starves and never re-attacks.
+    private var speakTail: Task<Void, Never>?
 
     /// Cosine similarity floor below which we treat the question as off-topic
     /// and refuse to call the LLM (CS Navigator grounding-gate pattern). 0.4
@@ -60,6 +71,20 @@ final class QAOrchestrator {
     /// but soft-wraps + commas can split a single thought into multiple emitted
     /// "sentences" so we leave headroom.
     private let maxSpokenSentences: Int = 10
+
+    private static let globalSystemInstructions = """
+    You are a meeting assistant answering a question across multiple recorded meetings on the user's phone. Each excerpt is tagged with its source meeting title and timestamp. Your answer is read aloud, so write it the way a person would speak it — natural, conversational, in your own words.
+
+    How to answer:
+    - Synthesize across meetings. If the same person committed to similar things in different meetings, fold them into one coherent statement and name the meetings briefly ("in the standup and the planning sync, ...").
+    - When a fact comes from a single meeting, you can mention it casually ("in the planning sync") but don't quote the title verbatim if it's awkward.
+    - Use the "Meeting overviews" block as the trusted backbone — it lists each meeting's topics, decisions, action items. Use the "Excerpts" for specifics and grounding.
+    - Length: three to five sentences of plain prose. No bullet points, no numbered lists, no dashes, no asterisks, no markdown.
+    - Speakers are not pre-labeled. Names from the transcript may be misheard — say "the team" or "two people" rather than guessing if you're unsure.
+    - Never invent decisions, dates, owners, or meetings that are not in the context.
+    - Do not preface with "Based on the meetings" or "According to the context." Just answer.
+    - If the overviews and excerpts together don't answer the question, reply with exactly: I don't have that across your meetings yet.
+    """
 
     private static let systemInstructions = """
     You are a meeting assistant. The user asks a question and you answer using the meeting context provided. Your answer is read aloud, so write it the way a person would speak it — natural, conversational, in your own words.
@@ -89,9 +114,35 @@ final class QAOrchestrator {
     func cancel() async {
         inFlight?.cancel()
         inFlight = nil
+        // Drop the speech chain too — otherwise sentences from the cancelled
+        // ask keep landing in the worker after we've cleared the player.
+        speakTail?.cancel()
+        speakTail = nil
         await tts.stop()
         liveAnswer = ""
         stage = .idle
+    }
+
+    /// Append `sentence` to the ordered speech chain and return immediately.
+    /// The caller (LLM stream loop) keeps reading the next snapshot while
+    /// Kokoro synthesises this sentence in the background. See `speakTail`.
+    private func speakChained(_ sentence: String) {
+        let prev = speakTail
+        let svc = tts
+        speakTail = Task { [prev] in
+            if let prev { _ = await prev.value }
+            if Task.isCancelled { return }
+            await svc.speak(sentence)
+        }
+    }
+
+    /// Wait for every queued sentence in the chain to finish synthesising +
+    /// being scheduled on the player. Used by the orchestrator after the LLM
+    /// stream completes so we don't tear down `liveAnswer` mid-playback.
+    private func awaitSpeakChain() async {
+        let tail = speakTail
+        speakTail = nil
+        if let tail { _ = await tail.value }
     }
 
     /// Lazy-warm the TTS pipeline. Called from ChatThreadView.task so Kokoro's
@@ -127,8 +178,9 @@ final class QAOrchestrator {
         stage = .speaking
         for sentence in sentences {
             if Task.isCancelled { break }
-            await tts.speak(sentence)
+            speakChained(sentence)
         }
+        await awaitSpeakChain()
         stage = .idle
     }
 
@@ -137,6 +189,22 @@ final class QAOrchestrator {
         let task = Task<QAResult?, Never> { [weak self] in
             guard let self else { return nil }
             return await self.runAsk(question: question, in: meeting)
+        }
+        inFlight = task
+        return await task.value
+    }
+
+    /// Cross-meeting Q&A: lets the hierarchical retriever fire its Layer-1
+    /// summary search to pick the most relevant meetings, then runs Layer-2
+    /// chunk search inside that scope. The overview block is assembled from
+    /// the matched meetings' structured summaries — different prompt frame
+    /// from the per-meeting path because there is no single "this meeting"
+    /// to anchor against.
+    func askGlobal(question: String, repository: MeetingsRepository) async -> QAResult? {
+        await cancel()
+        let task = Task<QAResult?, Never> { [weak self] in
+            guard let self else { return nil }
+            return await self.runAskGlobal(question: question, repository: repository)
         }
         inFlight = task
         return await task.value
@@ -230,10 +298,14 @@ final class QAOrchestrator {
                     // the speaker goes quiet.
                     if spokenCount >= maxSpokenSentences { break }
                     let preview = sentence.prefix(48)
-                    log.info("speak[\(spokenCount + 1, privacy: .public)/\(self.maxSpokenSentences, privacy: .public)] enqueue: \(preview, privacy: .public)")
-                    await tts.speak(sentence)
-                    log.info("speak[\(spokenCount + 1, privacy: .public)] returned (synth done, queued for playback)")
+                    log.info("speak[\(spokenCount + 1, privacy: .public)/\(self.maxSpokenSentences, privacy: .public)] chain: \(preview, privacy: .public)")
+                    speakChained(sentence)
                     spokenCount += 1
+                    // TTFSW now measures "first sentence handed to the synth
+                    // chain" — the user perceives this as the moment the voice
+                    // starts because Kokoro's first audio chunk lands ~300 ms
+                    // later regardless. This is also when the speaker icon
+                    // animates in the UI.
                     if ttfswMillis == nil, let start = ttfswStart {
                         ttfswMillis = start.duration(to: .now).aftertalkMillis
                     }
@@ -247,8 +319,8 @@ final class QAOrchestrator {
                 for sentence in trailing {
                     if spokenCount >= maxSpokenSentences { break }
                     let preview = sentence.prefix(48)
-                    log.info("speak[trailing] enqueue: \(preview, privacy: .public)")
-                    await tts.speak(sentence)
+                    log.info("speak[trailing] chain: \(preview, privacy: .public)")
+                    speakChained(sentence)
                     spokenCount += 1
                 }
             }
@@ -266,6 +338,13 @@ final class QAOrchestrator {
             return nil
         }
 
+        // Drain the speech chain so the result returns only after every
+        // sentence is at least handed to the player. We don't await actual
+        // audio completion (that'd block the UI for ~3 s per sentence) — just
+        // synthesis + scheduleBuffer, which is what makes the playback feel
+        // continuous from the user's side.
+        await awaitSpeakChain()
+
         let elapsed = totalStart.duration(to: .now).aftertalkMillis
         let answer = lastSnapshot
         // Clear streaming UI state now that the persisted bubble will own the
@@ -282,6 +361,172 @@ final class QAOrchestrator {
         )
     }
 
+    private func runAskGlobal(question: String, repository: MeetingsRepository) async -> QAResult? {
+        let trimmed = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        stage = .retrieving
+        liveAnswer = ""
+        let totalStart = ContinuousClock.now
+
+        let retrieval: RetrievalResult
+        do {
+            // scopedToMeeting=nil ⇒ HierarchicalRetriever fires Layer 1
+            // (summary search) → Layer 2 (chunk search inside top meetings).
+            // topKChunks tightened to 6 (vs 8 per-meeting) to leave token
+            // headroom for the multi-meeting overview block below.
+            retrieval = try await retriever.retrieve(
+                RetrievalQuery(text: trimmed, scopedToMeeting: nil, topKChunks: 6)
+            )
+        } catch {
+            log.error("global retrieve failed: \(String(describing: error), privacy: .public)")
+            stage = .failed("retrieve: \(error)")
+            return nil
+        }
+
+        log.info("global retrieve: chunks=\(retrieval.chunks.count, privacy: .public) topScore=\(retrieval.topScore, privacy: .public) threshold=\(self.groundingThreshold, privacy: .public)")
+
+        if retrieval.isEmpty || retrieval.topScore < groundingThreshold {
+            log.warning("global grounding gate fired (topScore=\(retrieval.topScore, privacy: .public))")
+            let disclaimer = "I don't have that across your meetings yet."
+            stage = .speaking
+            liveAnswer = disclaimer
+            await tts.speak(disclaimer)
+            let elapsed = totalStart.duration(to: .now).aftertalkMillis
+            liveAnswer = ""
+            stage = .idle
+            return QAResult(
+                question: trimmed,
+                answer: disclaimer,
+                citations: [],
+                groundedByLLM: false,
+                ttfswMillis: nil,
+                totalMillis: elapsed
+            )
+        }
+
+        // Pull title + structured summary for every meeting represented in
+        // the chunk hits, in score order. ContextPacker uses titles for the
+        // chunk render lines; the overview block lifts decisions/topics
+        // straight from the structured summaries.
+        var seenIds = Set<UUID>()
+        let citedMeetingIds = retrieval.chunks
+            .map(\.meetingId)
+            .filter { seenIds.insert($0).inserted }
+        let headers: [MeetingHeader]
+        do {
+            headers = try await repository.meetingHeaders(for: citedMeetingIds)
+        } catch {
+            log.error("header fetch failed: \(String(describing: error), privacy: .public)")
+            stage = .failed("headers: \(error)")
+            return nil
+        }
+        let titlesById = Dictionary(uniqueKeysWithValues: headers.map { ($0.id, $0.title) })
+
+        let session = LanguageModelSession(instructions: Self.globalSystemInstructions)
+        do {
+            try checkAvailability()
+        } catch {
+            stage = .failed("\(error)")
+            return nil
+        }
+
+        // Inline meeting title into each chunk render via a tiny shim — the
+        // shared ContextPacker takes a single meetingTitle argument, but in
+        // global mode every chunk can come from a different meeting. So we
+        // pre-render lines per-meeting and concatenate, preserving relevance
+        // order across the whole result set.
+        let renderedLines = retrieval.chunks.map { c -> String in
+            let title = titlesById[c.meetingId] ?? "Unknown meeting"
+            let timestamp = String(format: "%02d:%02d", Int(c.startSec) / 60, Int(c.startSec) % 60)
+            let speaker = c.speakerName ?? "Unknown speaker"
+            return "[\(String(title.prefix(60))) • \(timestamp) • \(speaker)] \(c.text)"
+        }
+        let citations = retrieval.chunks.map { c in
+            ChunkCitation(
+                chunkId: c.chunkId, meetingId: c.meetingId,
+                startSec: c.startSec, endSec: c.endSec, speakerName: c.speakerName
+            )
+        }
+
+        let overviewBlock = Self.globalOverview(headers: headers)
+        let overviewSection = overviewBlock.isEmpty ? "" : "Meeting overviews:\n\(overviewBlock)\n\n"
+        let prompt = """
+        Question: \(trimmed)
+
+        \(overviewSection)Excerpts (sorted by relevance, across multiple meetings):
+
+        \(renderedLines.joined(separator: "\n\n"))
+        """
+
+        stage = .generating
+        var detector = SentenceBoundaryDetector()
+        var lastSnapshot = ""
+        var ttfswStart: ContinuousClock.Instant?
+        var ttfswMillis: Double?
+        var spokenCount = 0
+
+        do {
+            let stream = session.streamResponse(to: prompt)
+            outer: for try await snapshot in stream {
+                if Task.isCancelled { break }
+                let text = snapshot.content
+                guard text != lastSnapshot else { continue }
+                lastSnapshot = text
+                liveAnswer = text
+                if ttfswStart == nil { ttfswStart = .now }
+
+                let sentences = detector.feed(text)
+                if !sentences.isEmpty, stage != .speaking {
+                    stage = .speaking
+                }
+                for sentence in sentences {
+                    if Task.isCancelled { break outer }
+                    if spokenCount >= maxSpokenSentences { break }
+                    speakChained(sentence)
+                    spokenCount += 1
+                    if ttfswMillis == nil, let start = ttfswStart {
+                        ttfswMillis = start.duration(to: .now).aftertalkMillis
+                    }
+                }
+            }
+            if !Task.isCancelled, spokenCount < maxSpokenSentences {
+                let trailing = detector.finalize(lastSnapshot)
+                for sentence in trailing {
+                    if spokenCount >= maxSpokenSentences { break }
+                    speakChained(sentence)
+                    spokenCount += 1
+                }
+            }
+        } catch {
+            log.error("global generate failed: \(String(describing: error), privacy: .public)")
+            stage = .failed("generate: \(error)")
+            return nil
+        }
+
+        if Task.isCancelled {
+            await tts.stop()
+            liveAnswer = ""
+            stage = .idle
+            return nil
+        }
+
+        await awaitSpeakChain()
+
+        let elapsed = totalStart.duration(to: .now).aftertalkMillis
+        let answer = lastSnapshot
+        liveAnswer = ""
+        stage = .idle
+        return QAResult(
+            question: trimmed,
+            answer: answer,
+            citations: citations,
+            groundedByLLM: true,
+            ttfswMillis: ttfswMillis,
+            totalMillis: elapsed
+        )
+    }
+
     private func checkAvailability() throws {
         let model = SystemLanguageModel.default
         switch model.availability {
@@ -289,6 +534,37 @@ final class QAOrchestrator {
         case .unavailable(let reason): throw QAError.modelUnavailable("\(reason)")
         @unknown default: throw QAError.modelUnavailable("unknown")
         }
+    }
+
+    /// Compact multi-meeting overview block. Each header gets one short
+    /// paragraph that lists topics + decisions + action items, capped tight
+    /// so even five meetings fit comfortably under our 2400-token budget
+    /// alongside the chunk excerpts. Headers without a structured summary
+    /// (still-processing or pre-Day 4 records) are skipped silently.
+    private static func globalOverview(headers: [MeetingHeader]) -> String {
+        var blocks: [String] = []
+        for h in headers.prefix(5) {
+            guard let s = h.summary else { continue }
+            var lines: [String] = ["• \(String(h.title.prefix(60)))"]
+            if !s.topics.isEmpty {
+                lines.append("    Topics: \(s.topics.prefix(5).joined(separator: "; "))")
+            }
+            if !s.decisions.isEmpty {
+                lines.append("    Decisions: \(s.decisions.prefix(4).joined(separator: "; "))")
+            }
+            if !s.actionItems.isEmpty {
+                let items = s.actionItems.prefix(4).map { (desc, owner) -> String in
+                    if let owner, !owner.isEmpty { return "\(owner): \(desc)" }
+                    return desc
+                }
+                lines.append("    Actions: \(items.joined(separator: "; "))")
+            }
+            if !s.openQuestions.isEmpty {
+                lines.append("    Open: \(s.openQuestions.prefix(3).joined(separator: "; "))")
+            }
+            blocks.append(lines.joined(separator: "\n"))
+        }
+        return blocks.joined(separator: "\n\n")
     }
 
     /// Renders the persisted MeetingSummaryRecord as a compact overview block

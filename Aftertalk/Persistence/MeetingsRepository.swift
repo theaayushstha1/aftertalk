@@ -119,6 +119,54 @@ actor MeetingsRepository {
         try modelContext.save()
     }
 
+    /// Returns (and lazily creates) the singleton global cross-meeting thread.
+    /// Always `isGlobal = true`, `meetingId = nil`. Backs the "Ask" tab so the
+    /// user can query across every recorded meeting in one place.
+    func globalChatThreadId() throws -> UUID {
+        let descriptor = FetchDescriptor<ChatThread>(
+            predicate: #Predicate { $0.isGlobal == true }
+        )
+        if let existing = try modelContext.fetch(descriptor).first {
+            return existing.id
+        }
+        let thread = ChatThread(meetingId: nil, isGlobal: true)
+        modelContext.insert(thread)
+        try modelContext.save()
+        return thread.id
+    }
+
+    /// Snapshot of the metadata the global chat path needs from a set of
+    /// meeting IDs: title for citation pills, structured summary fields for
+    /// the cross-meeting overview block. Order matches the input array;
+    /// missing IDs are dropped. Returns plain values rather than `@Model`
+    /// references so the result is safe to ferry across the actor boundary.
+    func meetingHeaders(for meetingIds: [UUID]) throws -> [MeetingHeader] {
+        guard !meetingIds.isEmpty else { return [] }
+        let scope = Set(meetingIds)
+        let descriptor = FetchDescriptor<Meeting>(
+            predicate: #Predicate { scope.contains($0.id) }
+        )
+        let meetings = try modelContext.fetch(descriptor)
+        let byId = Dictionary(uniqueKeysWithValues: meetings.map { ($0.id, $0) })
+        return meetingIds.compactMap { id in
+            guard let m = byId[id] else { return nil }
+            let summary: MeetingHeader.SummarySnapshot? = m.summary.map { rec in
+                MeetingHeader.SummarySnapshot(
+                    decisions: rec.decisions,
+                    topics: rec.topics,
+                    actionItems: rec.actionItems.map { ($0.description, $0.owner) },
+                    openQuestions: rec.openQuestions
+                )
+            }
+            return MeetingHeader(
+                id: m.id,
+                title: m.title,
+                recordedAt: m.recordedAt,
+                summary: summary
+            )
+        }
+    }
+
     /// Returns the chat thread ID for the given meeting, creating one on first
     /// access. Per-meeting threads always have `isGlobal = false` and a non-nil
     /// `meetingId`; the global cross-meeting thread is created in Day 5.
@@ -158,6 +206,25 @@ actor MeetingsRepository {
     private func fetchMeeting(_ id: UUID) throws -> Meeting? {
         let descriptor = FetchDescriptor<Meeting>(predicate: #Predicate { $0.id == id })
         return try modelContext.fetch(descriptor).first
+    }
+}
+
+/// Sendable snapshot of meeting metadata. Carries the `MeetingSummaryRecord`
+/// reference straight from SwiftData — that's an `@Model` class so it stays
+/// live as long as a fetch context retains it. Used by the global Q&A path
+/// (which doesn't have a single `Meeting` to scope against).
+struct MeetingHeader: Sendable {
+    let id: UUID
+    let title: String
+    let recordedAt: Date
+    let summary: SummarySnapshot?
+
+    struct SummarySnapshot: Sendable {
+        let decisions: [String]
+        let topics: [String]
+        /// (description, owner) tuples — matches `ActionItemRecord` shape.
+        let actionItems: [(String, String?)]
+        let openQuestions: [String]
     }
 }
 

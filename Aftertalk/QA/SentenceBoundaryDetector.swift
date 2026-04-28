@@ -10,7 +10,13 @@ import Foundation
 ///
 /// Pure logic, no audio. Unit-testable.
 struct SentenceBoundaryDetector {
-    var softWrapLimit: Int = 80
+    // Soft-wrap is a safety valve for runaway phrases the LLM never punctuates,
+    // not a stylistic chunker. Cutting at 80 chars on whitespace was sending
+    // Kokoro 3-4 fragments per natural sentence; each fragment got its own
+    // prosody attack + ~80 ms tail silence, which is why a 3-sentence answer
+    // sounded like a stuttering 12-clip mosaic. 240 keeps every realistic
+    // spoken sentence intact and only fires on actual model failures.
+    var softWrapLimit: Int = 240
     private(set) var cursor: String.Index?
 
     /// Feed the entire snapshot text (not the delta). Returns the new sentences
