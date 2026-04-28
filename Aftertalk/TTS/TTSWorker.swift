@@ -92,6 +92,13 @@ actor TTSWorker {
             var consumed = false
             init(_ buffer: AVAudioPCMBuffer) { self.buffer = buffer }
         }
+        // AVAudioConverter is stateful. Once our input block returns
+        // `.endOfStream`, the converter latches into a terminal state and
+        // silently produces zero frames on the next `convert` call — which is
+        // exactly what was happening: sentence 1 played, sentences 2..N
+        // synthesised cleanly but came out silent. `reset()` drops that state
+        // so each Kokoro chunk gets a fresh conversion.
+        converter.reset()
         let cursor = InputCursor(inBuffer)
         var convError: NSError?
         let status = converter.convert(to: outBuffer, error: &convError) { _, status in
