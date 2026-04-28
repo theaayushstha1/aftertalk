@@ -133,6 +133,16 @@ actor KokoroTTSService: TTSService {
 
         do {
             let result = try await box.manager.synthesizeDetailed(text: trimmed)
+            // The Kokoro synthesise call doesn't accept a Swift cancellation
+            // token (it's a CoreML inference graph), so a cancel that lands
+            // mid-call still produces a valid result. Drop it instead of
+            // enqueuing — otherwise the orchestrator's `cancel()` clears the
+            // player queue and we immediately push fresh samples behind it,
+            // making mic-tap-to-stop feel like it didn't work.
+            if Task.isCancelled {
+                log.info("speak cancelled post-synth — dropping \(result.chunks.count, privacy: .public) chunk(s)")
+                return
+            }
             // synthesizeDetailed gives us per-chunk `[Float]` PCM at 24 kHz with
             // NO per-call peak normalisation, so concatenating chunks across
             // sentences keeps a consistent loudness curve.

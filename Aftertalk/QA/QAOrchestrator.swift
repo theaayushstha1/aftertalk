@@ -51,17 +51,21 @@ final class QAOrchestrator {
     /// "you interrupted, hold to ask again" hint without us re-arming ASR
     /// automatically (auto-restart is the next iteration of Session A).
     var didBargeIn: Bool = false
-    /// Tail of an ordered chain of speech tasks. Each call to `speakChained`
-    /// appends a Task that awaits the previous tail before invoking the
-    /// underlying actor-isolated `tts.speak`. The orchestrator never blocks on
-    /// synthesis: the LLM stream keeps draining + the sentence detector keeps
-    /// finding boundaries while Kokoro synthesises previous sentences in the
-    /// background. Output order is preserved because each Task awaits its
-    /// predecessor's `.value` before issuing its own `speak`. TTSWorker's FIFO
-    /// `scheduleBuffer` queue then plays them gaplessly — sentence N+1's PCM
-    /// is already on the player by the time N's tail finishes, so AVPlayerNode
-    /// never starves and never re-attacks.
-    private var speakTail: Task<Void, Never>?
+    /// Ordered chain of speech tasks. Each call to `speakChained` appends a
+    /// Task that awaits the previous tail before invoking the underlying
+    /// actor-isolated `tts.speak`. The orchestrator never blocks on
+    /// synthesis: the LLM stream keeps draining + the sentence detector
+    /// keeps finding boundaries while Kokoro synthesises previous sentences
+    /// in the background. Output order is preserved because each Task
+    /// awaits its predecessor's `.value` before issuing its own `speak`.
+    ///
+    /// We track *every* task, not just the tail, so `cancel()` can stop all
+    /// of them. A previous version cancelled only the tail — predecessors
+    /// kept running their synthesis + enqueue, so a tap on the mic to
+    /// interrupt the answer dropped the current player buffer but the next
+    /// chunk that finished synthesising one beat later still played, making
+    /// the cancel feel unresponsive.
+    private var speechTasks: [Task<Void, Never>] = []
 
     /// Cosine similarity floor below which we treat the question as off-topic
     /// and refuse to call the LLM (CS Navigator grounding-gate pattern). 0.4
@@ -120,10 +124,12 @@ final class QAOrchestrator {
     func cancel() async {
         inFlight?.cancel()
         inFlight = nil
-        // Drop the speech chain too — otherwise sentences from the cancelled
-        // ask keep landing in the worker after we've cleared the player.
-        speakTail?.cancel()
-        speakTail = nil
+        // Cancel every task in the speech chain, not just the tail. Each
+        // task carries its own Task.isCancelled state that the underlying
+        // `speak` checks after synthesis returns, so this is what makes a
+        // mid-answer mic-tap actually silence the assistant.
+        for t in speechTasks { t.cancel() }
+        speechTasks.removeAll()
         bargeIn.stop()
         await tts.stop()
         liveAnswer = ""
@@ -148,22 +154,23 @@ final class QAOrchestrator {
     /// The caller (LLM stream loop) keeps reading the next snapshot while
     /// Kokoro synthesises this sentence in the background. See `speakTail`.
     private func speakChained(_ sentence: String) {
-        let prev = speakTail
+        let prev = speechTasks.last
         let svc = tts
-        speakTail = Task { [prev] in
+        let task = Task { [prev] in
             if let prev { _ = await prev.value }
             if Task.isCancelled { return }
             await svc.speak(sentence)
         }
+        speechTasks.append(task)
     }
 
     /// Wait for every queued sentence in the chain to finish synthesising +
     /// being scheduled on the player. Used by the orchestrator after the LLM
     /// stream completes so we don't tear down `liveAnswer` mid-playback.
     private func awaitSpeakChain() async {
-        let tail = speakTail
-        speakTail = nil
-        if let tail { _ = await tail.value }
+        let tasks = speechTasks
+        speechTasks.removeAll()
+        for t in tasks { _ = await t.value }
     }
 
     /// Lazy-warm the TTS pipeline. Called from ChatThreadView.task so Kokoro's
