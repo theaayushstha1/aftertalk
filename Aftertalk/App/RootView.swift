@@ -117,11 +117,27 @@ struct RootView: View {
             }
             return FluidAudioParakeetTranscriber(modelDirectory: modelDir)
         }()
+        // Pyannote 3.1 + WeSpeaker v2 for offline post-recording diarization.
+        // If the bundle isn't present (CI / fresh checkout) we wire `nil` so
+        // the pipeline silently skips the .diarizing stage — same fall-through
+        // pattern as Parakeet. We trigger warm() in the background to amortize
+        // the ~1-2s Core ML compile cost off the recording-stop path.
+        let diarization: (any DiarizationService)? = {
+            guard
+                let segURL = ModelLocator.segmentationModelURL(),
+                let embURL = ModelLocator.embeddingModelURL()
+            else { return nil }
+            return PyannoteDiarizationService(segmentationURL: segURL, embeddingURL: embURL)
+        }()
+        if let diarization {
+            Task.detached(priority: .utility) { try? await diarization.warm() }
+        }
         let p = MeetingProcessingPipeline(
             repository: repository,
             embeddings: embeddings,
             llm: llm,
-            batchASR: batchASR
+            batchASR: batchASR,
+            diarization: diarization
         )
         pipeline = p
         recording.onSessionEnded = { transcript, duration, audioFileURL in
@@ -185,6 +201,7 @@ private struct PipelineStatusView: View {
         case .idle: ""
         case .savingMeeting: "Saving meeting…"
         case .polishingTranscript: "Polishing transcript…"
+        case .diarizing: "Identifying speakers…"
         case .chunking: "Chunking transcript…"
         case .embedding(let p, let t): "Embedding chunks (\(p)/\(t))"
         case .summarizing: "Generating summary…"

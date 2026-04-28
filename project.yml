@@ -47,6 +47,10 @@ targets:
         type: folder
         buildPhase: resources
         optional: true
+      - path: Aftertalk/Resources/Models/speaker-diarization-coreml
+        type: folder
+        buildPhase: resources
+        optional: true
     dependencies:
       - package: Moonshine
         product: MoonshineVoice

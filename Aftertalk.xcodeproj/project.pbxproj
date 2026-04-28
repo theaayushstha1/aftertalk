@@ -18,6 +18,7 @@
 		1CCAE15EFC6F2081AE3ABCAD /* MeetingsRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21439AE268E8977B668ABE10 /* MeetingsRepository.swift */; };
 		1ECD03C982A0A7CC37390123 /* ChunkIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12CE4DE71780FBF89F329ECF /* ChunkIndexer.swift */; };
 		22C743FAC9EEB9AA7849890F /* TTSWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F05E02C550A2CE27398F6A16 /* TTSWorker.swift */; };
+		2C310D817826A0A6EEA932E4 /* speaker-diarization-coreml in Resources */ = {isa = PBXBuildFile; fileRef = C2BDC3D142F5100968F7631E /* speaker-diarization-coreml */; };
 		310FCE3053C44A06CA540486 /* PrivacyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99862B2E5CBEF50199E2EB90 /* PrivacyMonitor.swift */; };
 		34114B893F140710EA8BE803 /* MeetingsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97DA4F3A5B7929B96475F1C /* MeetingsListView.swift */; };
 		38C0ACF29F72EA68849C825E /* QuestionASR.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B91B8023F976CD72C5925C7 /* QuestionASR.swift */; };
@@ -101,6 +102,7 @@
 		B474E30D85796D1903009400 /* ChatThread.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatThread.swift; sourceTree = "<group>"; };
 		B97DA4F3A5B7929B96475F1C /* MeetingsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsListView.swift; sourceTree = "<group>"; };
 		BD030A4E86E5D2FEAD786508 /* AudioSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionManager.swift; sourceTree = "<group>"; };
+		C2BDC3D142F5100968F7631E /* speaker-diarization-coreml */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "speaker-diarization-coreml"; path = "Aftertalk/Resources/Models/speaker-diarization-coreml"; sourceTree = SOURCE_ROOT; };
 		D6063AA672D8496187E4B91E /* MeetingSummaryEmbedding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSummaryEmbedding.swift; sourceTree = "<group>"; };
 		D6CD3F62BBAA845BDEBEEBA6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		DEADFEB1B811F46CB0A86D15 /* MeetingSummaryRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSummaryRecord.swift; sourceTree = "<group>"; };
@@ -269,6 +271,7 @@
 			children = (
 				1A74B7708239C81455540EDD /* kokoro-82m-coreml */,
 				B34378858924C7E089B40789 /* parakeet-tdt-0.6b-v2 */,
+				C2BDC3D142F5100968F7631E /* speaker-diarization-coreml */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -364,6 +367,7 @@
 				082623100296B723A089A5B8 /* Models in Resources */,
 				5186CA58F5105FB6FF3B3995 /* kokoro-82m-coreml in Resources */,
 				BB45EC15A784A16A1436149E /* parakeet-tdt-0.6b-v2 in Resources */,
+				2C310D817826A0A6EEA932E4 /* speaker-diarization-coreml in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
