@@ -128,6 +128,15 @@ final class MeetingProcessingPipeline {
                 canonical = await polishedResult
                 speakerSegments = await diarResult
 
+                // Drop ~725 MB of resident model weights (Parakeet ASR + Pyannote
+                // diarization) before chunk/embed/summarize. Neither service is
+                // touched again — RAG + Foundation Models do all downstream work
+                // and Q&A only needs the streaming Moonshine handle. Without this
+                // the foreground app sits at ~1.6 GB across a 30-min meeting and
+                // jetsam terminates us mid-Q&A on iPhone Air.
+                if batchASR != nil { await batchASR?.cleanup() }
+                if diarization != nil { await diarization?.cleanup() }
+
                 if let polished = canonical {
                     let polishedText = polished.text.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !polishedText.isEmpty {

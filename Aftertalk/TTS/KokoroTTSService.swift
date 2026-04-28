@@ -99,11 +99,14 @@ actor KokoroTTSService: TTSService {
         self.managerBox = ManagerBox(manager)
         // `manager.initialize()` only loads the TTS .mlmodelc graphs. The G2P
         // models, voice embedding cache and lexicon JSONs lazy-load on first
-        // synthesis (~250-400 ms cold). Run a one-token dry synthesis here so
-        // the first user-visible ask after launch hits a fully hot pipeline.
-        // Output is discarded; we never enqueue it on the worker.
+        // synthesis (~250-400 ms cold). Run a dry synthesis here so the first
+        // user-visible ask after launch hits a fully hot pipeline. The string
+        // intentionally contains an OOV proper noun ("Aftertalk") so the
+        // CoreML G2P graph actually loads — a lexicon-only prewarm like "Hi."
+        // never exercises G2P and the cold-start tax just moves to the first
+        // real question. Output is discarded; we never enqueue it on the worker.
         do {
-            _ = try await manager.synthesizeDetailed(text: "Hi.")
+            _ = try await manager.synthesizeDetailed(text: "Aftertalk warmup phrase.")
             log.info("Kokoro warm: voice=\(self.voice.fluidAudioId, privacy: .public) staging=\(staging.path, privacy: .public) (G2P + voice cached)")
         } catch {
             log.warning("Kokoro G2P prewarm dry-synth failed: \(String(describing: error), privacy: .public) — falling through, first ask will pay cold-start")
@@ -134,8 +137,13 @@ actor KokoroTTSService: TTSService {
             // NO per-call peak normalisation, so concatenating chunks across
             // sentences keeps a consistent loudness curve.
             let samples = result.chunks.flatMap(\.samples)
+            // Fire-and-forget enqueue. The worker queue plays sentences in
+            // FIFO order on its own actor, so synthesis of sentence N+1 starts
+            // immediately after N's samples are queued — total wallclock is
+            // bounded by `synthesize × N + first_audio_chunk` instead of
+            // `(synthesize + playback) × N`. This is the difference between
+            // TTFSW ≈ 700 ms and TTFSW ≈ 7000 ms on a 5-sentence answer.
             await worker.enqueue(samples)
-            await worker.waitUntilDone()
         } catch {
             log.error("synth failed: \(String(describing: error), privacy: .public)")
         }
