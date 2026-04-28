@@ -46,6 +46,11 @@ final class FoundationModelsSummaryGenerator: LLMService, @unchecked Sendable {
     - "openQuestions" are questions raised but not resolved during the meeting.
     - Be concise. Prefer fewer high-quality items over many vague ones.
     - If the transcript is too short or empty, return empty arrays for all fields.
+
+    Speaker attribution:
+    - The transcript may be prefixed with speaker labels at the start of each line (for example `Speaker 1: ...`, `Speaker 2: ...`).
+    - When a decision or action is attributed to such a speaker label and no proper name is mentioned in the line, set "owner" to that speaker label verbatim ("Speaker 1", "Speaker 2", etc.).
+    - If a proper name is mentioned alongside the speaker label, prefer the proper name.
     """
 
     /// Owner strings the LLM emits when it should have omitted the field.

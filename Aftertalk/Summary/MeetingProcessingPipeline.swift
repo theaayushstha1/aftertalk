@@ -71,6 +71,7 @@ final class MeetingProcessingPipeline {
             var workingTitle = initialTitle
             var canonical: CanonicalTranscript? = nil
             var speakerSegments: [SpeakerSegment] = []
+            var rosterByspeakerId: [String: String] = [:]
 
             if audioFileURL != nil, batchASR != nil || diarization != nil {
                 // Surface "polishing" first since it's almost always the
@@ -146,6 +147,9 @@ final class MeetingProcessingPipeline {
                 if !speakerSegments.isEmpty {
                     let drafts = DiarizationReconciler.buildSpeakerRoster(from: speakerSegments)
                     try? await repository.attachSpeakers(to: meetingId, drafts: drafts)
+                    rosterByspeakerId = Dictionary(
+                        uniqueKeysWithValues: drafts.map { ($0.speakerId, $0.displayName) }
+                    )
                 }
             }
             let transcript = workingTranscript
@@ -190,6 +194,32 @@ final class MeetingProcessingPipeline {
                 }
             }
 
+            // Resolve each chunk's display name from the roster so retrieval
+            // (ContextPacker reads `chunk.speakerName`) and the embed prefix
+            // get a human-readable label, not the raw "Speaker_1" id.
+            if !rosterByspeakerId.isEmpty {
+                drafts = drafts.map { d in
+                    let resolvedName = d.speakerId.flatMap { rosterByspeakerId[$0] } ?? d.speakerName
+                    return ChunkDraft(
+                        orderIndex: d.orderIndex,
+                        text: d.text,
+                        startSec: d.startSec,
+                        endSec: d.endSec,
+                        speakerName: resolvedName,
+                        speakerId: d.speakerId
+                    )
+                }
+            }
+
+            // Build a speaker-attributed transcript when we have word-level
+            // assignments + a roster, so the summary LLM can attach owners
+            // to action items. Falls through to plain transcript otherwise.
+            let summaryTranscript = Self.attributedTranscript(
+                fallback: transcript,
+                words: wordAssignments,
+                roster: rosterByspeakerId
+            )
+
             stage = .embedding(progress: 0, total: drafts.count)
             var vectors: [[Float]] = []
             vectors.reserveCapacity(drafts.count)
@@ -208,7 +238,7 @@ final class MeetingProcessingPipeline {
 
             stage = .summarizing
             let started = ContinuousClock.now
-            let result = try await llm.generateSummary(transcript: transcript)
+            let result = try await llm.generateSummary(transcript: summaryTranscript)
             let elapsed = started.duration(to: .now)
             let latency = elapsed.aftertalkMillis
             try await repository.attachSummary(to: meetingId, summary: result.summary, latencyMillis: latency)
@@ -237,6 +267,39 @@ final class MeetingProcessingPipeline {
         let clipped = firstSentence.prefix(60)
         let suffix = firstSentence.count > 60 ? "…" : ""
         return String(clipped) + suffix
+    }
+
+    /// Render the transcript with `Speaker N:` prefixes when we have word-level
+    /// speaker assignments + a roster mapping ids → display names. Consecutive
+    /// words by the same speaker are folded into one utterance line. When no
+    /// diarization data is present, falls back to the plain transcript so the
+    /// summary call is unaffected on the Moonshine-only path.
+    static func attributedTranscript(
+        fallback: String,
+        words: [WordSpeakerAssignment],
+        roster: [String: String]
+    ) -> String {
+        guard !words.isEmpty, !roster.isEmpty else { return fallback }
+        var lines: [String] = []
+        var currentSid: String? = nil
+        var buffer: [String] = []
+        for w in words {
+            if w.speakerId != currentSid {
+                if !buffer.isEmpty {
+                    let label = currentSid.flatMap { roster[$0] } ?? "Unknown speaker"
+                    lines.append("\(label): \(buffer.joined(separator: " "))")
+                    buffer.removeAll(keepingCapacity: true)
+                }
+                currentSid = w.speakerId
+            }
+            buffer.append(w.text)
+        }
+        if !buffer.isEmpty {
+            let label = currentSid.flatMap { roster[$0] } ?? "Unknown speaker"
+            lines.append("\(label): \(buffer.joined(separator: " "))")
+        }
+        let joined = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return joined.isEmpty ? fallback : joined
     }
 
     static func buildEmbedText(meetingTitle: String, draft: ChunkDraft) -> String {
