@@ -59,6 +59,22 @@ actor KokoroTTSService: TTSService {
         init(_ manager: KokoroTtsManager) { self.manager = manager }
     }
     private var managerBox: ManagerBox?
+
+    /// Dedup handle for in-flight `warm()` calls. Actors are NOT re-entrancy
+    /// safe: every `await` inside `warm()` releases the actor mailbox so a
+    /// second concurrent `warm()` (per-meeting `ChatThreadView.task` racing
+    /// with `GlobalChatView.task`, or a SwiftUI view rebuild re-firing
+    /// `.task`) sails past the `managerBox?.manager.isAvailable` guard while
+    /// the first call is still inside `manager.initialize()`. Two staged
+    /// copies + two `KokoroTtsManager.initialize()` invocations end up
+    /// loading the 5s + 15s graphs twice. FluidAudio does not release the
+    /// loser, which is the proximate cause of the OOM crash during the
+    /// first answer's TTS playback (jetsam terminated us mid-`speak[5/10]`
+    /// on iPhone 17, code 9).
+    ///
+    /// With this handle, the second caller awaits the first task's value
+    /// instead of starting its own load.
+    private var warmingTask: Task<Void, Error>?
     #endif
 
     init(voice: KokoroVoice = .default) {
@@ -68,7 +84,41 @@ actor KokoroTTSService: TTSService {
     func warm() async throws {
         #if canImport(FluidAudio)
         if managerBox?.manager.isAvailable == true { return }
+        if let existing = warmingTask {
+            // Another caller is already loading the manager. Await its
+            // outcome instead of racing past the isAvailable guard above.
+            // See `warmingTask` doc for the OOM rationale.
+            return try await existing.value
+        }
+        let task = Task<Void, Error> { [weak self] in
+            guard let self else {
+                throw TTSError.initializationFailed("KokoroTTSService deallocated mid-warm")
+            }
+            try await self.performWarmInternal()
+        }
+        self.warmingTask = task
+        do {
+            try await task.value
+            // Leave warmingTask non-nil on success so the next concurrent
+            // call awaits an already-resolved task (instant) instead of
+            // re-checking isAvailable + spawning a fresh task. Cleared
+            // explicitly in `cleanup()`.
+        } catch {
+            // Clear so the next caller can retry from scratch.
+            self.warmingTask = nil
+            throw error
+        }
+        #else
+        throw TTSError.modelMissing("FluidAudio module not available")
+        #endif
+    }
 
+    #if canImport(FluidAudio)
+    /// Body of `warm()`. Pulled out so the dedup wrapper can capture it as a
+    /// single Task and concurrent callers can await the same in-flight load.
+    /// Must be invoked exactly once per service lifetime (the wrapper
+    /// guarantees this via `warmingTask`).
+    private func performWarmInternal() async throws {
         guard let bundleDir = ModelLocator.kokoroBundleDirectory() else {
             throw TTSError.modelMissing(
                 "kokoro bundle not present — run Scripts/fetch-kokoro-models.sh"
@@ -97,24 +147,19 @@ actor KokoroTTSService: TTSService {
             throw TTSError.initializationFailed(String(describing: error))
         }
         self.managerBox = ManagerBox(manager)
-        // `manager.initialize()` only loads the TTS .mlmodelc graphs. The G2P
-        // models, voice embedding cache and lexicon JSONs lazy-load on first
-        // synthesis (~250-400 ms cold). Run a dry synthesis here so the first
-        // user-visible ask after launch hits a fully hot pipeline. The string
-        // intentionally contains an OOV proper noun ("Aftertalk") so the
-        // CoreML G2P graph actually loads — a lexicon-only prewarm like "Hi."
-        // never exercises G2P and the cold-start tax just moves to the first
-        // real question. Output is discarded; we never enqueue it on the worker.
-        do {
-            _ = try await manager.synthesizeDetailed(text: "Aftertalk diagnostic warmup live.")
-            log.info("[BUILD-V2] Kokoro warm complete: voice=\(self.voice.fluidAudioId, privacy: .public) (G2P + voice cached)")
-        } catch {
-            log.warning("Kokoro G2P prewarm dry-synth failed: \(String(describing: error), privacy: .public) — falling through, first ask will pay cold-start")
-        }
-        #else
-        throw TTSError.modelMissing("FluidAudio module not available")
-        #endif
+        log.info("[BUILD-V2] Kokoro warm complete: voice=\(self.voice.fluidAudioId, privacy: .public) (initialize only — first ask pays G2P cold start)")
+
+        // Note: a previous build also ran a dry `synthesizeDetailed("Aftertalk
+        // diagnostic warmup live.")` here to pre-load G2P graphs + voice
+        // embeddings. We removed it after a crash repro showed the dry-synth
+        // routinely got cancelled when SwiftUI rebuilt `.task` (cancelling the
+        // parent), and on cancellation FluidAudio internally re-ran its full
+        // model warm-up. The result was two passes of 5s + 15s `.mlmodelc`
+        // loads plus dry-synth intermediate buffers — pushing peak high enough
+        // to trigger jetsam mid-answer playback. Trade-off accepted: the first
+        // ask after launch pays ~300 ms of G2P load on top of TTFSW. Worth it.
     }
+    #endif
 
     func speak(_ sentence: String) async {
         let trimmed = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -169,6 +214,7 @@ actor KokoroTTSService: TTSService {
         #if canImport(FluidAudio)
         managerBox?.manager.cleanup()
         managerBox = nil
+        warmingTask = nil
         #endif
     }
 
