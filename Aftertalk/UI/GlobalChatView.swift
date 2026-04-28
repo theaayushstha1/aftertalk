@@ -19,6 +19,9 @@ struct GlobalChatView: View {
     /// Stops a single hold gesture from persisting two user messages when
     /// `DragGesture.onEnded` double-fires.
     @State private var asking = false
+    /// Mirror of ChatThreadView.autoRearmTask. Auto-rearm runs the same 6 s
+    /// listen window after a global-chat barge-in.
+    @State private var autoRearmTask: Task<Void, Never>?
 
     init(qaContext: QAContext?) {
         self.qaContext = qaContext
@@ -55,7 +58,10 @@ struct GlobalChatView: View {
                 }
             }
             .onDisappear {
+                autoRearmTask?.cancel()
+                autoRearmTask = nil
                 if let ctx = qaContext {
+                    ctx.orchestrator.onAutoRearm = nil
                     Task {
                         await ctx.orchestrator.cancel()
                         await ctx.orchestrator.cleanupTTS()
@@ -71,12 +77,39 @@ struct GlobalChatView: View {
         VStack(spacing: 0) {
             messageList(ctx: ctx)
             statusStrip
+            bargeInBanner(ctx: ctx)
             holdButton(ctx: ctx)
         }
         .task {
             await ensureThread(repository: ctx.repository)
             await ctx.questionASR.prewarm()
             await ctx.orchestrator.warmTTS()
+            ctx.orchestrator.onAutoRearm = {
+                await autoRearmListen(ctx: ctx)
+            }
+        }
+    }
+
+    /// Same banner pattern as ChatThreadView — appears the moment the user's
+    /// voice trips the energy gate during answer playback, stays until a
+    /// fresh hold-to-ask clears `didBargeIn`. Rendered above the hold button
+    /// instead of overlaid so it doesn't crowd the citation pills.
+    @ViewBuilder
+    private func bargeInBanner(ctx: QAContext) -> some View {
+        if ctx.orchestrator.didBargeIn {
+            HStack(spacing: 8) {
+                Image(systemName: "hand.raised.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                Text("You interrupted — keep talking or hold to ask again.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .background(.thinMaterial)
+            .transition(.opacity)
         }
     }
 
@@ -208,6 +241,12 @@ struct GlobalChatView: View {
 
     private func beginHold(ctx: QAContext) async {
         lastError = nil
+        // Cancel any auto-rearm window that was reopening the mic after a
+        // prior barge-in. Without this, the user grabbing the button mid
+        // listen-window double-fires QuestionASR.start.
+        autoRearmTask?.cancel()
+        autoRearmTask = nil
+        ctx.orchestrator.clearBargeIn()
         await ctx.orchestrator.cancel()
         do {
             try await ctx.questionASR.start()
@@ -215,6 +254,31 @@ struct GlobalChatView: View {
             holding = false
             lastError = "\(error)"
         }
+    }
+
+    /// Auto-rearm listener for the global chat surface. Mirrors
+    /// ChatThreadView.autoRearmListen — same 6 s window, same auto-finalize
+    /// path through `endHold`. Only difference is the question routes
+    /// through `askGlobal` instead of `ask(in: meeting)`.
+    private func autoRearmListen(ctx: QAContext) async {
+        autoRearmTask?.cancel()
+        let task = Task { @MainActor in
+            holding = true
+            do {
+                try await ctx.questionASR.start()
+            } catch {
+                holding = false
+                lastError = "auto-rearm: \(error)"
+                return
+            }
+            do { try await Task.sleep(for: .seconds(6)) } catch { return }
+            if Task.isCancelled { return }
+            holding = false
+            await endHold(ctx: ctx)
+        }
+        autoRearmTask = task
+        await task.value
+        autoRearmTask = nil
     }
 
     private func endHold(ctx: QAContext) async {

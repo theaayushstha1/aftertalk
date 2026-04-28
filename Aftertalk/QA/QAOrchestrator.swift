@@ -48,9 +48,29 @@ final class QAOrchestrator {
     private var inFlight: Task<QAResult?, Never>?
     /// Set the moment the user's voice trips the energy gate during TTS
     /// playback. Surfaced through `didBargeIn` so the chat UI can render a
-    /// "you interrupted, hold to ask again" hint without us re-arming ASR
-    /// automatically (auto-restart is the next iteration of Session A).
+    /// "you interrupted, hold to ask again" banner. Cleared either by the
+    /// next ask starting (top of `runAsk`/`runAskGlobal` reset) or by the
+    /// view explicitly calling `clearBargeIn()` when the user begins a fresh
+    /// hold gesture (so the banner disappears the moment listening starts).
     var didBargeIn: Bool = false
+
+    /// View-side callback fired immediately after a barge-in completes its
+    /// cancel(). Lets the chat surface auto-restart ASR for a short listen
+    /// window so the user doesn't have to find the mic button again — they
+    /// just keep talking after interrupting. Setting this to `nil` (or never
+    /// installing it) preserves the manual barge-in behavior: cancel only,
+    /// banner shows, user holds-to-ask again.
+    ///
+    /// Why a closure instead of a Bool flag: re-arming requires taking over
+    /// the view's `holding` state + scheduling an auto-finalize timer, which
+    /// is genuinely view-layer work. Pushing that into the orchestrator would
+    /// drag QuestionASR + the chat thread's repository into this file. The
+    /// closure boundary keeps the orchestrator focused on retrieve → LLM →
+    /// TTS and lets each chat surface own its own re-arm policy (per-meeting
+    /// chat vs global cross-meeting chat both install the same handler today
+    /// but they could diverge later — global chat might want a longer window
+    /// for example).
+    var onAutoRearm: (@MainActor () async -> Void)?
     /// Ordered chain of speech tasks. Each call to `speakChained` appends a
     /// Task that awaits the previous tail before invoking the underlying
     /// actor-isolated `tts.speak`. The orchestrator never blocks on
@@ -141,13 +161,34 @@ final class QAOrchestrator {
     /// queue and flag `didBargeIn` so the chat UI can prompt the user to ask
     /// again. Idempotent: re-arming while already armed is a no-op (the
     /// controller resets internally).
+    ///
+    /// After cancellation completes we invoke `onAutoRearm` (if set) so the
+    /// chat surface can immediately reopen QuestionASR for a short listen
+    /// window. The callback is awaited in-line so the auto-rearm flow runs
+    /// after the speech chain has fully torn down — re-arming concurrently
+    /// with `cancel()` would race the AudioSessionManager flip from
+    /// `.voiceChat` (TTS) back to `.measurement` (clean ASR).
     private func armBargeIn() {
         bargeIn.start { [weak self] in
             guard let self else { return }
             self.didBargeIn = true
             self.log.info("user barged in — cancelling answer playback")
-            Task { await self.cancel() }
+            Task {
+                await self.cancel()
+                if let rearm = self.onAutoRearm {
+                    self.log.info("auto-rearm invoked after barge-in")
+                    await rearm()
+                }
+            }
         }
+    }
+
+    /// Reset the `didBargeIn` flag so the chat UI's "you interrupted" banner
+    /// disappears. Called from the chat surfaces' `beginHold` so a fresh
+    /// hold gesture clears the banner before the listening row replaces it
+    /// (instead of showing both stacked).
+    func clearBargeIn() {
+        didBargeIn = false
     }
 
     /// Flip the audio session from clean-listening (`.measurement`) to

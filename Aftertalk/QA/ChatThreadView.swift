@@ -20,6 +20,11 @@ struct ChatThreadView: View {
     /// `asking` stays true through the entire question-persist + LLM-ask
     /// path, so a duplicate end-event hits the early-return.
     @State private var asking = false
+    /// Tracks the auto-rearm listen window so a fresh hold gesture can
+    /// cancel it. Without this, manually grabbing the mic during the auto
+    /// listen would result in two start() calls on QuestionASR — the
+    /// streamer chokes when its capture session is reconfigured mid-stream.
+    @State private var autoRearmTask: Task<Void, Never>?
 
     init(meeting: Meeting,
          orchestrator: QAOrchestrator,
@@ -43,6 +48,7 @@ struct ChatThreadView: View {
         VStack(spacing: 0) {
             messageList
             statusStrip
+            bargeInBanner
             holdButton
         }
         .task {
@@ -54,6 +60,15 @@ struct ChatThreadView: View {
             // and crashing on the first chat question. By the time the user
             // finishes holding the mic, this prewarm is hot.
             await orchestrator.warmTTS()
+            // Install the auto-rearm closure on the orchestrator so a
+            // mid-answer barge-in can immediately reopen the mic for a
+            // short listen window without making the user find the mic
+            // button again. The closure captures @State references which
+            // remain valid across view rebuilds (SwiftUI proxies through
+            // the underlying storage). Cleared on disappear.
+            orchestrator.onAutoRearm = {
+                await autoRearmListen()
+            }
         }
         .onDisappear {
             // Cancel any in-flight TTS so a tab switch interrupts cleanly,
@@ -66,6 +81,9 @@ struct ChatThreadView: View {
             // running"). MeetingDetailView.onDisappear takes care of the
             // real teardown when the user navigates back to the meetings
             // list.
+            autoRearmTask?.cancel()
+            autoRearmTask = nil
+            orchestrator.onAutoRearm = nil
             Task { await orchestrator.cancel() }
         }
     }
@@ -118,6 +136,32 @@ struct ChatThreadView: View {
                 .foregroundStyle(.tertiary)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 4)
+        }
+    }
+
+    /// Banner shown after the user's voice trips the barge-in energy gate
+    /// during TTS playback. We render it above the hold button (not as an
+    /// overlay) so it doesn't fight with the listening row inside the
+    /// scroll view. Cleared by `clearBargeIn()` the moment a fresh hold
+    /// gesture starts. Auto-rearm makes this banner short-lived in
+    /// practice — it shows during the ~6 s listen window and disappears
+    /// when the orchestrator's next `runAsk` resets `didBargeIn`.
+    @ViewBuilder
+    private var bargeInBanner: some View {
+        if orchestrator.didBargeIn {
+            HStack(spacing: 8) {
+                Image(systemName: "hand.raised.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                Text("You interrupted — keep talking or hold to ask again.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .background(.thinMaterial)
+            .transition(.opacity)
         }
     }
 
@@ -190,6 +234,15 @@ struct ChatThreadView: View {
 
     private func beginHold() async {
         lastError = nil
+        // Cancel any pending auto-rearm window — the user wants to drive the
+        // mic manually now. Without this, autoRearmListen's questionASR.start
+        // can race against the one we're about to fire below, leaving the
+        // streamer in a half-reconfigured state.
+        autoRearmTask?.cancel()
+        autoRearmTask = nil
+        // Clear the "you interrupted" banner so it doesn't stack on top of
+        // the listening row.
+        orchestrator.clearBargeIn()
         // Barge-in: cancel any in-flight answer + drop queued TTS so the new
         // question doesn't pile on top of the previous one.
         await orchestrator.cancel()
@@ -199,6 +252,37 @@ struct ChatThreadView: View {
             holding = false
             lastError = "\(error)"
         }
+    }
+
+    /// Called by the orchestrator's `onAutoRearm` after a barge-in cancels the
+    /// in-flight answer. Reopens QuestionASR for a short window so the user
+    /// can keep speaking without finding the mic button. Auto-finalizes after
+    /// `autoRearmWindowSeconds` by routing through `endHold` — same persist +
+    /// ask pipeline as a manual release.
+    private func autoRearmListen() async {
+        autoRearmTask?.cancel()
+        let task = Task { @MainActor in
+            holding = true
+            do {
+                try await questionASR.start()
+            } catch {
+                holding = false
+                lastError = "auto-rearm: \(error)"
+                return
+            }
+            // 6 s gives the user enough time to say a follow-up question
+            // (most are under 4 s in our golden eval) without sitting on a
+            // hot mic indefinitely. They can still release/tap to finalize
+            // earlier — the gesture path runs through endHold which checks
+            // the same `asking` guard.
+            do { try await Task.sleep(for: .seconds(6)) } catch { return }
+            if Task.isCancelled { return }
+            holding = false
+            await endHold()
+        }
+        autoRearmTask = task
+        await task.value
+        autoRearmTask = nil
     }
 
     private func endHold() async {

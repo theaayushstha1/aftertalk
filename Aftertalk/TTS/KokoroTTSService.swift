@@ -74,7 +74,7 @@ actor KokoroTTSService: TTSService {
     ///
     /// With this handle, the second caller awaits the first task's value
     /// instead of starting its own load.
-    private var warmingTask: Task<Void, Error>?
+    private var warmingTask: Task<Void, any Error>?
     #endif
 
     init(voice: KokoroVoice = .default) {
@@ -90,7 +90,7 @@ actor KokoroTTSService: TTSService {
             // See `warmingTask` doc for the OOM rationale.
             return try await existing.value
         }
-        let task = Task<Void, Error> { [weak self] in
+        let task = Task<Void, any Error> { [weak self] in
             guard let self else {
                 throw TTSError.initializationFailed("KokoroTTSService deallocated mid-warm")
             }

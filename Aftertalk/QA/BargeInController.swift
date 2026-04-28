@@ -31,6 +31,32 @@ import os
 /// **Lifecycle:** caller invokes `start(onBargeIn:)` when entering
 /// `.speaking` and `stop()` when leaving. Single-shot per `start` call —
 /// once it triggers it stops itself before invoking the callback.
+///
+/// **Why not TEN-VAD / SmartTurnV3 yet:** the original plan called for
+/// TEN-VAD (Tencent's ONNX VAD) and Pipecat's SmartTurnV3 EoU predictor
+/// running through Sherpa-ONNX iOS bindings. Both would replace this
+/// energy-only gate with model-based speech detection that's far more
+/// robust to coughs, door slams, and AirPods clicks. The two reasons
+/// they're not here yet:
+///   1. Sherpa-ONNX iOS adds an `.xcframework` dep + ONNX bundling
+///      (~3-4 hrs of integration work) and we're on Day 5 of 7. The
+///      energy gate at -32 dB / 180 ms hold has zero false-positives
+///      against Kokoro's AEC-suppressed playback in field testing,
+///      so the upgrade is a robustness investment more than a
+///      correctness fix.
+///   2. SmartTurnV3 EoU only pays off in a hands-free auto-end mode.
+///      Aftertalk's UX is hold-to-talk, so the user's release IS the
+///      EoU signal.
+///
+/// **Swap path when we add TEN-VAD:** replace the meter poll in
+/// `tick(dtMillis:)` with a TEN-VAD inference on the same recorder's
+/// input frames (pull via `recorder.cafFile` reader or shift to a
+/// shared input tap from AudioCaptureService). The triggering policy
+/// (180 ms voiced hold → fire callback → stop self) stays identical.
+/// SmartTurnV3 layers on top: predict EoU when isSpeaking transitions
+/// false → then trigger turn-end without waiting for an absolute
+/// silence timer. Both can land behind the existing `start/stop`
+/// surface without any caller change.
 @MainActor
 final class BargeInController {
     private let log = Logger(subsystem: "com.theaayushstha.aftertalk", category: "BargeIn")
