@@ -156,10 +156,25 @@ actor KokoroTTSService: TTSService {
 
     // MARK: - Bundle staging
 
-    /// Build a writable directory tree at `<staging>/Models/kokoro/` whose
-    /// entries are symlinks to the read-only bundled `.mlmodelc` directories
-    /// and assets. FluidAudio's `loadModelsOnce` only reads from the staged
-    /// path, so symlinking is safe.
+    /// Build a writable directory tree at `<staging>/Models/kokoro/` populated
+    /// with copies of the bundled `.mlmodelc` directories + voice/G2P assets.
+    ///
+    /// We tried symlinking first — cheaper on disk — but FluidAudio's
+    /// `DownloadUtils.loadModelsOnce` enumerates required model paths with
+    /// `FileManager.fileExists(atPath:)` and on iOS that check returns `false`
+    /// for symlinks that cross the sandbox boundary from `<App>/Library/Caches/`
+    /// into the read-only signed bundle (`<App>/Aftertalk.app/...`). When the
+    /// existence check fails, FluidAudio falls through to `downloadRepo` which
+    /// `moveItem`s freshly-downloaded files onto our staging slots and crashes
+    /// with `NSCocoaErrorDomain Code=516` ("File exists") because the symlink
+    /// is already there. Copying real bytes into staging makes `fileExists`
+    /// return `true`, so the download path never runs in airplane mode.
+    ///
+    /// Cost: ~700 MB duplicated under Caches (one-shot on first launch). The
+    /// bundle still ships at ~1.3 GB so total disk on first warm is ~2 GB,
+    /// dropping back as iOS evicts Caches under pressure. Subsequent launches
+    /// see `coremldata.bin` already present in each `.mlmodelc` and skip the
+    /// copy.
     private static func stageBundleIntoFluidAudioLayout(
         bundle: URL,
         staging: URL
@@ -170,9 +185,6 @@ actor KokoroTTSService: TTSService {
             .appendingPathComponent("kokoro", isDirectory: true)
         try fm.createDirectory(at: kokoroDir, withIntermediateDirectories: true)
 
-        // Required mlmodelc bundles + voice/G2P assets. Names must match
-        // `ModelNames.TTS.requiredModels` + `ModelNames.G2P.requiredModels` +
-        // `ModelNames.MultilingualG2P.requiredModels` (recon §1.3).
         let entries: [String]
         do {
             entries = try fm.contentsOfDirectory(atPath: bundle.path)
@@ -183,16 +195,46 @@ actor KokoroTTSService: TTSService {
         for entry in entries {
             let source = bundle.appendingPathComponent(entry)
             let dest = kokoroDir.appendingPathComponent(entry)
-            // If the dest exists and points at the same target, leave it alone.
-            // Otherwise replace with a fresh symlink.
-            if fm.fileExists(atPath: dest.path) {
-                if let existing = try? fm.destinationOfSymbolicLink(atPath: dest.path),
-                   existing == source.path {
-                    continue
-                }
-                try? fm.removeItem(at: dest)
+            if isStagingEntryPopulated(at: dest, sourcedFrom: source) {
+                continue
             }
-            try fm.createSymbolicLink(at: dest, withDestinationURL: source)
+            // Replace whatever is there (stale symlink from old build, partial
+            // copy from a crash) before re-copying. iOS removeItem is a no-op
+            // when the path doesn't exist.
+            try? fm.removeItem(at: dest)
+            do {
+                try fm.copyItem(at: source, to: dest)
+            } catch {
+                throw TTSError.initializationFailed(
+                    "stage copy failed for \(entry): \(error)"
+                )
+            }
         }
+    }
+
+    /// True when `dest` already holds the staged form of `source`. For
+    /// `.mlmodelc` directories we look for `coremldata.bin` inside (FluidAudio
+    /// uses the same marker in `loadModelsOnce`). For loose JSON files we
+    /// match byte size against the bundle copy — a fast proxy for "this is the
+    /// same file we'd copy."
+    private static func isStagingEntryPopulated(at dest: URL, sourcedFrom source: URL) -> Bool {
+        let fm = FileManager.default
+        var destIsDir: ObjCBool = false
+        guard fm.fileExists(atPath: dest.path, isDirectory: &destIsDir) else { return false }
+
+        if destIsDir.boolValue {
+            // mlmodelc: look for the compile-output marker
+            let marker = dest.appendingPathComponent("coremldata.bin")
+            if fm.fileExists(atPath: marker.path) { return true }
+            // Sub-folders (e.g. voices/) — match entry counts as a cheap check
+            let srcCount = (try? fm.contentsOfDirectory(atPath: source.path).count) ?? -1
+            let dstCount = (try? fm.contentsOfDirectory(atPath: dest.path).count) ?? -2
+            return srcCount >= 0 && srcCount == dstCount
+        }
+
+        // Top-level JSON — same file size means identical (assets are static)
+        let srcSize = (try? fm.attributesOfItem(atPath: source.path)[.size] as? Int) ?? -1
+        let dstSize = (try? fm.attributesOfItem(atPath: dest.path)[.size] as? Int) ?? -2
+        return srcSize > 0 && srcSize == dstSize
     }
 }
