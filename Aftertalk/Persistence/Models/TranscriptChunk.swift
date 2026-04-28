@@ -11,6 +11,11 @@ final class TranscriptChunk {
     var startSec: Double
     var endSec: Double
     var speakerName: String?
+    /// Stable Pyannote speaker ID ("Speaker_1", "Speaker_2", …) assigned by
+    /// FluidAudio's `SpeakerManager`. Nullable with default `nil` so existing
+    /// SwiftData records migrate cleanly when diarization is unavailable
+    /// (no model bundle, fall-through path).
+    var speakerId: String?
     var embedding: Data
     var embeddingDim: Int
 
@@ -22,6 +27,7 @@ final class TranscriptChunk {
         startSec: Double,
         endSec: Double,
         speakerName: String? = nil,
+        speakerId: String? = nil,
         embedding: Data,
         embeddingDim: Int
     ) {
@@ -32,6 +38,7 @@ final class TranscriptChunk {
         self.startSec = startSec
         self.endSec = endSec
         self.speakerName = speakerName
+        self.speakerId = speakerId
         self.embedding = embedding
         self.embeddingDim = embeddingDim
     }

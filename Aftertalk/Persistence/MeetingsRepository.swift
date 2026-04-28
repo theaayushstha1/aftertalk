@@ -57,11 +57,37 @@ actor MeetingsRepository {
                 startSec: draft.startSec,
                 endSec: draft.endSec,
                 speakerName: draft.speakerName,
+                speakerId: draft.speakerId,
                 embedding: bytes,
                 embeddingDim: vec.count
             )
             chunk.meeting = meeting
             modelContext.insert(chunk)
+        }
+        try modelContext.save()
+    }
+
+    /// Persist the per-meeting speaker roster produced by Pyannote diarization.
+    /// Each entry maps a stable `speakerId` to a UI display name + color +
+    /// 256-dim WeSpeaker centroid (mean of that speaker's segment embeddings).
+    /// Replaces any existing labels for the meeting (idempotent rerun).
+    func attachSpeakers(to meetingId: UUID, drafts: [SpeakerLabelDraft]) throws {
+        guard let meeting = try fetchMeeting(meetingId) else { return }
+        // Wipe existing labels first — diarization is allowed to be re-run.
+        for existing in meeting.speakers {
+            modelContext.delete(existing)
+        }
+        for draft in drafts {
+            let label = SpeakerLabel(
+                meetingId: meetingId,
+                speakerId: draft.speakerId,
+                displayName: draft.displayName,
+                colorHex: draft.colorHex,
+                embeddingCentroid: draft.embeddingCentroid,
+                firstSeenSec: draft.firstSeenSec
+            )
+            label.meeting = meeting
+            modelContext.insert(label)
         }
         try modelContext.save()
     }
