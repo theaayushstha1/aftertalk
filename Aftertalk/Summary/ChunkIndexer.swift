@@ -7,6 +7,25 @@ struct ChunkDraft: Sendable {
     let startSec: Double
     let endSec: Double
     let speakerName: String?
+    /// Stable Pyannote speaker id ("Speaker_1" …) reconciled from word
+    /// timings. `nil` when diarization didn't run or no overlap was found.
+    let speakerId: String?
+
+    init(
+        orderIndex: Int,
+        text: String,
+        startSec: Double,
+        endSec: Double,
+        speakerName: String? = nil,
+        speakerId: String? = nil
+    ) {
+        self.orderIndex = orderIndex
+        self.text = text
+        self.startSec = startSec
+        self.endSec = endSec
+        self.speakerName = speakerName
+        self.speakerId = speakerId
+    }
 }
 
 /// Splits a transcript into sentence windows (max 4 sentences) and produces
@@ -59,6 +78,32 @@ struct ChunkIndexer {
             i += advance
         }
         return drafts
+    }
+
+    /// Stamp each chunk with its dominant speakerId based on word-level
+    /// assignments. Returns a new array; never mutates the caller's drafts.
+    /// If `assignments` is empty (diarization didn't run) returns `drafts`
+    /// unchanged.
+    func stampSpeakers(
+        on drafts: [ChunkDraft],
+        words: [WordSpeakerAssignment]
+    ) -> [ChunkDraft] {
+        guard !words.isEmpty else { return drafts }
+        return drafts.map { d in
+            let sid = DiarizationReconciler.dominantSpeaker(
+                for: d.startSec,
+                chunkEnd: d.endSec,
+                words: words
+            )
+            return ChunkDraft(
+                orderIndex: d.orderIndex,
+                text: d.text,
+                startSec: d.startSec,
+                endSec: d.endSec,
+                speakerName: d.speakerName,
+                speakerId: sid
+            )
+        }
     }
 
     static func splitSentences(_ text: String) -> [String] {
