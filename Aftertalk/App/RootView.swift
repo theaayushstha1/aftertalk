@@ -109,10 +109,12 @@ struct RootView: View {
         // lazy-loads on first transcribe to avoid burning the ~3-4s Core ML
         // compile cost on app start.
         let batchASR: (any BatchASRService)? = {
-            guard let modelDir = Bundle.main.url(
-                forResource: "parakeet-tdt-0.6b-v2-coreml",
-                withExtension: nil
-            ) else { return nil }
+            // Folder name (no -coreml suffix) matches FluidAudio's
+            // Repo.parakeetV2.folderName, which it re-derives at load time.
+            let modelDir = ModelLocator.parakeetModelDirectory()
+            guard FileManager.default.fileExists(atPath: modelDir.path) else {
+                return nil
+            }
             return FluidAudioParakeetTranscriber(modelDirectory: modelDir)
         }()
         let p = MeetingProcessingPipeline(
