@@ -22,6 +22,7 @@
 		310FCE3053C44A06CA540486 /* PrivacyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99862B2E5CBEF50199E2EB90 /* PrivacyMonitor.swift */; };
 		34114B893F140710EA8BE803 /* MeetingsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97DA4F3A5B7929B96475F1C /* MeetingsListView.swift */; };
 		F30D475B451E44FAADE74CFC /* GlobalChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6454754D0EB483B86D202D1 /* GlobalChatView.swift */; };
+		0D139C275C77464B8AC4A7A4 /* BargeInController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F4353BBDC4A4844B1612782 /* BargeInController.swift */; };
 		38C0ACF29F72EA68849C825E /* QuestionASR.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B91B8023F976CD72C5925C7 /* QuestionASR.swift */; };
 		3B43BAE51490BD9B154C227A /* QAContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6812DF977A4E1532C1AECFFE /* QAContext.swift */; };
 		43E41EC61BEEBDE7E303D4D1 /* TTSService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75EB00EA79CC6EBF481D45C9 /* TTSService.swift */; };
@@ -103,6 +104,7 @@
 		B474E30D85796D1903009400 /* ChatThread.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatThread.swift; sourceTree = "<group>"; };
 		B97DA4F3A5B7929B96475F1C /* MeetingsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsListView.swift; sourceTree = "<group>"; };
 		F6454754D0EB483B86D202D1 /* GlobalChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalChatView.swift; sourceTree = "<group>"; };
+		7F4353BBDC4A4844B1612782 /* BargeInController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BargeInController.swift; sourceTree = "<group>"; };
 		BD030A4E86E5D2FEAD786508 /* AudioSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionManager.swift; sourceTree = "<group>"; };
 		C2BDC3D142F5100968F7631E /* speaker-diarization-coreml */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "speaker-diarization-coreml"; path = "Aftertalk/Resources/Models/speaker-diarization-coreml"; sourceTree = SOURCE_ROOT; };
 		D6063AA672D8496187E4B91E /* MeetingSummaryEmbedding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSummaryEmbedding.swift; sourceTree = "<group>"; };
@@ -213,6 +215,7 @@
 		2FA7649B4FD5B8C417278BFC /* QA */ = {
 			isa = PBXGroup;
 			children = (
+				7F4353BBDC4A4844B1612782 /* BargeInController.swift */,
 				3A4464265DAFCF9AAB73E41A /* ChatThreadView.swift */,
 				6812DF977A4E1532C1AECFFE /* QAContext.swift */,
 				8B11757A1FB86E399551FA5E /* QAOrchestrator.swift */,
@@ -414,6 +417,7 @@
 				310FCE3053C44A06CA540486 /* PrivacyMonitor.swift in Sources */,
 				6CDB55AF8B5F579F8C1AB298 /* PyannoteDiarizationService.swift in Sources */,
 				3B43BAE51490BD9B154C227A /* QAContext.swift in Sources */,
+				0D139C275C77464B8AC4A7A4 /* BargeInController.swift in Sources */,
 				7B72FA3541B06F22DCD748A3 /* QAOrchestrator.swift in Sources */,
 				38C0ACF29F72EA68849C825E /* QuestionASR.swift in Sources */,
 				8C0A3520E2A45F2F48379ACE /* RecordButton.swift in Sources */,

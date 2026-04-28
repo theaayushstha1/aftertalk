@@ -64,7 +64,11 @@ actor AudioSessionManager {
             try session.setCategory(
                 .playAndRecord,
                 mode: .voiceChat,
-                options: [.defaultToSpeaker, .allowBluetooth]
+                // `.duckOthers` lowers any music/podcast playing in another app
+                // for the duration of the TTS reply so the user hears Aftertalk
+                // clearly without needing to pause Spotify first. Restored
+                // automatically on deactivate via `.notifyOthersOnDeactivation`.
+                options: [.defaultToSpeaker, .allowBluetooth, .duckOthers]
             )
         } catch {
             throw .configureFailed(error)

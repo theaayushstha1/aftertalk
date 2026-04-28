@@ -262,6 +262,20 @@ final class MeetingProcessingPipeline {
             let latency = result.latencyMillis
             try await repository.attachSummary(to: meetingId, summary: result.summary, latencyMillis: latency)
 
+            // Promote the LLM's structured topics into a real title. Until now
+            // `workingTitle` was a transcript fragment (literally the first 60
+            // chars of speech), which produced gems like "Wonderful," and "Of
+            // the physical, the common sense, the a" in the meeting list. The
+            // summary's `topics` field is already 2-4 short noun phrases ranked
+            // by prominence — exactly what a human title would be. Skip the
+            // upgrade if the user manually renamed before summary landed (rare
+            // but possible on long meetings with fast taps).
+            let topicTitle = Self.title(fromTopics: result.summary.topics)
+            if let topicTitle, topicTitle != workingTitle {
+                try? await repository.renameMeeting(meetingId, to: topicTitle)
+                workingTitle = topicTitle
+            }
+
             // Meeting-level embedding now uses the structured summary fields
             // (decisions / actions / topics / speakers) instead of the raw
             // transcript head — Layer-1 cross-meeting routing matches on the
@@ -277,6 +291,23 @@ final class MeetingProcessingPipeline {
             stage = .failed("\(error)")
             return nil
         }
+    }
+
+    /// Build a meeting title from the LLM's ranked topic phrases. Joins up to
+    /// the top two topics with " · " so a meeting that genuinely covered two
+    /// distinct things ("Pricing tiers · Q3 hiring") reads naturally; a
+    /// single-topic meeting just shows that topic. Returns nil when topics is
+    /// empty so callers can keep the fallback fragment.
+    static func title(fromTopics topics: [String]) -> String? {
+        let cleaned = topics
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !cleaned.isEmpty else { return nil }
+        let top = Array(cleaned.prefix(2))
+        let joined = top.joined(separator: " · ")
+        // Hard cap so a verbose topic phrase doesn't blow the list row width.
+        let clipped = joined.prefix(64)
+        return clipped.count < joined.count ? String(clipped) + "…" : String(clipped)
     }
 
     static func suggestedTitle(from transcript: String) -> String {

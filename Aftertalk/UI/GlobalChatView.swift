@@ -318,7 +318,12 @@ private struct CrossMeetingBubble: View {
     }
 
     private func citationLabel(_ c: ChunkCitation) -> String {
-        let title = titlesById[c.meetingId].map { String($0.prefix(40)) } ?? "Unknown meeting"
+        // 28-char clip keeps the pill on one line at iPhone widths even when
+        // the bubble is at full inset. Topic-derived titles average 18-22
+        // chars after the auto-title pass (e.g. "Pricing tiers · Q3 hiring"),
+        // so this rarely truncates real titles — only the legacy fragment
+        // titles that pre-date the topic-rename get clipped.
+        let title = titlesById[c.meetingId].map { String($0.prefix(28)) } ?? "Unknown meeting"
         return "\(title) · \(timestamp(c.startSec))"
     }
 

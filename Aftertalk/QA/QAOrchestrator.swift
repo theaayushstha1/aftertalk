@@ -44,7 +44,13 @@ final class QAOrchestrator {
     private let retriever: any Retriever
     private let packer: ContextPacker
     private let tts: any TTSService
+    private let bargeIn = BargeInController()
     private var inFlight: Task<QAResult?, Never>?
+    /// Set the moment the user's voice trips the energy gate during TTS
+    /// playback. Surfaced through `didBargeIn` so the chat UI can render a
+    /// "you interrupted, hold to ask again" hint without us re-arming ASR
+    /// automatically (auto-restart is the next iteration of Session A).
+    var didBargeIn: Bool = false
     /// Tail of an ordered chain of speech tasks. Each call to `speakChained`
     /// appends a Task that awaits the previous tail before invoking the
     /// underlying actor-isolated `tts.speak`. The orchestrator never blocks on
@@ -118,9 +124,24 @@ final class QAOrchestrator {
         // ask keep landing in the worker after we've cleared the player.
         speakTail?.cancel()
         speakTail = nil
+        bargeIn.stop()
         await tts.stop()
         liveAnswer = ""
         stage = .idle
+    }
+
+    /// Arm the auto barge-in listener for the duration of TTS playback. When
+    /// the user's voice trips the energy gate we cancel the LLM stream + TTS
+    /// queue and flag `didBargeIn` so the chat UI can prompt the user to ask
+    /// again. Idempotent: re-arming while already armed is a no-op (the
+    /// controller resets internally).
+    private func armBargeIn() {
+        bargeIn.start { [weak self] in
+            guard let self else { return }
+            self.didBargeIn = true
+            self.log.info("user barged in — cancelling answer playback")
+            Task { await self.cancel() }
+        }
     }
 
     /// Append `sentence` to the ordered speech chain and return immediately.
@@ -216,6 +237,7 @@ final class QAOrchestrator {
 
         stage = .retrieving
         liveAnswer = ""
+        didBargeIn = false
         let totalStart = ContinuousClock.now
 
         let retrieval: RetrievalResult
@@ -238,7 +260,9 @@ final class QAOrchestrator {
             let disclaimer = "I don't have that in the meeting transcripts."
             stage = .speaking
             liveAnswer = disclaimer
+            armBargeIn()
             await tts.speak(disclaimer)
+            bargeIn.stop()
             let elapsed = totalStart.duration(to: .now).aftertalkMillis
             liveAnswer = ""
             stage = .idle
@@ -290,6 +314,7 @@ final class QAOrchestrator {
                 let sentences = detector.feed(text)
                 if !sentences.isEmpty, stage != .speaking {
                     stage = .speaking
+                    armBargeIn()
                 }
                 for sentence in sentences {
                     if Task.isCancelled { break outer }
@@ -344,6 +369,7 @@ final class QAOrchestrator {
         // synthesis + scheduleBuffer, which is what makes the playback feel
         // continuous from the user's side.
         await awaitSpeakChain()
+        bargeIn.stop()
 
         let elapsed = totalStart.duration(to: .now).aftertalkMillis
         let answer = lastSnapshot
@@ -367,6 +393,7 @@ final class QAOrchestrator {
 
         stage = .retrieving
         liveAnswer = ""
+        didBargeIn = false
         let totalStart = ContinuousClock.now
 
         let retrieval: RetrievalResult
@@ -391,7 +418,9 @@ final class QAOrchestrator {
             let disclaimer = "I don't have that across your meetings yet."
             stage = .speaking
             liveAnswer = disclaimer
+            armBargeIn()
             await tts.speak(disclaimer)
+            bargeIn.stop()
             let elapsed = totalStart.duration(to: .now).aftertalkMillis
             liveAnswer = ""
             stage = .idle
@@ -479,6 +508,7 @@ final class QAOrchestrator {
                 let sentences = detector.feed(text)
                 if !sentences.isEmpty, stage != .speaking {
                     stage = .speaking
+                    armBargeIn()
                 }
                 for sentence in sentences {
                     if Task.isCancelled { break outer }
@@ -512,6 +542,7 @@ final class QAOrchestrator {
         }
 
         await awaitSpeakChain()
+        bargeIn.stop()
 
         let elapsed = totalStart.duration(to: .now).aftertalkMillis
         let answer = lastSnapshot
