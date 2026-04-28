@@ -51,7 +51,14 @@ actor AudioSessionManager {
     /// during TTS playback for barge-in (Day 5). Order is the canonical one
     /// from WWDC23/10235 — flipping it silently disables echo cancellation.
     func configureForVoiceChat() throws(AudioSessionError) {
-        if mode == .voiceChat { return }
+        // No early-return on `mode == .voiceChat`. iOS can implicitly
+        // deactivate the session out from under us (interruption, route
+        // change, brief background) without our cached `mode` knowing,
+        // which leads to setActive() failing on the *next* hold-to-ask
+        // because the OS sees an active node graph against an inactive
+        // session. setCategory + setActive are both effectively no-ops
+        // when values already match — pay the few ms every time and
+        // guarantee the session is healthy.
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(
