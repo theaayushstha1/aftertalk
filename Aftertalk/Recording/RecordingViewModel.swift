@@ -144,6 +144,15 @@ final class RecordingViewModel {
         }
     }
 
+    // Ensure committed lines end with a sentence terminator so the downstream
+    // summary windower (NLTokenizer-based) can split the transcript into sentences.
+    private func terminate(_ line: String) -> String {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let last = trimmed.last else { return trimmed }
+        if last == "." || last == "?" || last == "!" { return trimmed }
+        return trimmed + "."
+    }
+
     private func apply(delta: TranscriptDelta) {
         eventsIn += 1
         if ttftMillis == nil, let start = startMonotonic, !delta.text.isEmpty {
@@ -152,7 +161,7 @@ final class RecordingViewModel {
         // Moonshine deltas are line-scoped: each event carries one sentence.
         // Accumulate completed lines so the full meeting transcript is preserved.
         if delta.isFinal {
-            let line = delta.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let line = terminate(delta.text)
             if !line.isEmpty { committedLines.append(line) }
             activeLine = ""
         } else {
