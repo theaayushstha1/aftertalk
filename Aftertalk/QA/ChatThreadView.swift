@@ -12,6 +12,14 @@ struct ChatThreadView: View {
     @State private var lastError: String?
     @State private var threadId: UUID?
     @State private var lastResult: QAResult?
+    /// Hard gate against `endHold` running twice for one gesture. SwiftUI's
+    /// `DragGesture` can fire `.onEnded` more than once when the touch is
+    /// interrupted (incoming notification, route change, brief background)
+    /// and the `holding` boolean alone wasn't sufficient because it gets
+    /// flipped back to false immediately while the async chain is mid-flight.
+    /// `asking` stays true through the entire question-persist + LLM-ask
+    /// path, so a duplicate end-event hits the early-return.
+    @State private var asking = false
 
     init(meeting: Meeting,
          orchestrator: QAOrchestrator,
@@ -194,6 +202,10 @@ struct ChatThreadView: View {
     }
 
     private func endHold() async {
+        if asking { return }
+        asking = true
+        defer { asking = false }
+
         let question = await questionASR.stop()
         guard !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return

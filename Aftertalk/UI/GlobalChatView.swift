@@ -15,6 +15,10 @@ struct GlobalChatView: View {
     @State private var lastError: String?
     @State private var threadId: UUID?
     @State private var lastResult: QAResult?
+    /// Mirror of ChatThreadView.asking — see that file for the rationale.
+    /// Stops a single hold gesture from persisting two user messages when
+    /// `DragGesture.onEnded` double-fires.
+    @State private var asking = false
 
     init(qaContext: QAContext?) {
         self.qaContext = qaContext
@@ -214,6 +218,10 @@ struct GlobalChatView: View {
     }
 
     private func endHold(ctx: QAContext) async {
+        if asking { return }
+        asking = true
+        defer { asking = false }
+
         let question = await ctx.questionASR.stop()
         guard !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         guard let threadId else {
