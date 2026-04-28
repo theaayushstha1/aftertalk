@@ -104,7 +104,9 @@ struct RootView: View {
         let store = SwiftDataVectorStore(modelContainer: container)
         let p = MeetingProcessingPipeline(repository: repository, embeddings: embeddings, llm: llm)
         pipeline = p
-        recording.onSessionEnded = { transcript, duration in
+        recording.onSessionEnded = { transcript, duration, _ in
+            // audioFileURL is captured by AudioCaptureService and will be
+            // consumed by the batch ASR (Parakeet) pass in a later step.
             Task { @MainActor in
                 _ = await p.process(transcript: transcript, durationSeconds: duration)
             }
@@ -148,6 +150,7 @@ private struct PipelineStatusView: View {
         switch stage {
         case .idle: ""
         case .savingMeeting: "Saving meeting…"
+        case .polishingTranscript: "Polishing transcript…"
         case .chunking: "Chunking transcript…"
         case .embedding(let p, let t): "Embedding chunks (\(p)/\(t))"
         case .summarizing: "Generating summary…"

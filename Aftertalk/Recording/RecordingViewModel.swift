@@ -23,7 +23,7 @@ final class RecordingViewModel {
     private var committedLines: [String] = []
     private var activeLine: String = ""
 
-    var onSessionEnded: (@MainActor (_ transcript: String, _ durationSeconds: Double) -> Void)?
+    var onSessionEnded: (@MainActor (_ transcript: String, _ durationSeconds: Double, _ audioFileURL: URL?) -> Void)?
 
     private let log = Logger(subsystem: "com.theaayushstha.aftertalk", category: "VM")
     private let capture = AudioCaptureService()
@@ -112,6 +112,7 @@ final class RecordingViewModel {
         let endedAt = ContinuousClock.now
         let duration = startMonotonic.map { Double($0.duration(to: endedAt).aftertalkMillis) / 1000.0 } ?? 0
         capture.stop()
+        let audioURL = capture.lastRecordingURL
         await streamer.stop()
         await AudioSessionManager.shared.deactivate()
         // Moonshine fires a final LineCompleted from stream.stop() that still
@@ -123,7 +124,7 @@ final class RecordingViewModel {
         // Do NOT cancel deltaTask/diagTask — they're long-lived consumers.
         isRecording = false
         if !captured.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            onSessionEnded?(captured, duration)
+            onSessionEnded?(captured, duration, audioURL)
         }
     }
 

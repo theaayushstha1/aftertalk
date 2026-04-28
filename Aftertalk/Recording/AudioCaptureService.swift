@@ -31,8 +31,14 @@ final class AudioCaptureService: @unchecked Sendable {
 
     nonisolated(unsafe) private var engine: AVAudioEngine?
     nonisolated(unsafe) private var capturing = false
+    nonisolated(unsafe) private var fileWriter: AVAudioFile?
+    nonisolated(unsafe) private var recordingURL: URL?
 
     var isCapturing: Bool { queue.sync { capturing } }
+
+    /// URL of the most recently completed WAV recording, if any.
+    /// Reset on each `start(pump:)`. Nil if file creation failed.
+    var lastRecordingURL: URL? { queue.sync { recordingURL } }
 
     func start(pump: any ASRSamplePump) throws(AudioCaptureError) {
         var caughtError: AudioCaptureError?
@@ -50,6 +56,10 @@ final class AudioCaptureService: @unchecked Sendable {
     }
 
     private func startLocked(pump: any ASRSamplePump) throws(AudioCaptureError) {
+        // Clear any URL from a prior session so callers don't pick up stale data.
+        self.recordingURL = nil
+        self.fileWriter = nil
+
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
         let inputFormat = inputNode.inputFormat(forBus: 0)
@@ -83,6 +93,17 @@ final class AudioCaptureService: @unchecked Sendable {
         let sourceSampleRate = inputFormat.sampleRate
         let targetSampleRate = self.targetSampleRate
 
+        // Build the WAV destination + writer. If anything fails, we proceed
+        // without persistence so streaming ASR + summary still work.
+        let (writer, url) = AudioCaptureService.makeFileWriter(targetFormat: target, log: log)
+        self.fileWriter = writer
+        self.recordingURL = url
+
+        // Captured by the audio tap closure. AVAudioEngine taps are serialized
+        // on a dedicated audio thread, so we own this reference exclusively
+        // from the tap callback.
+        let writerRef = writer
+
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { buffer, _ in
             let samples = AudioCaptureService.extractSamples(buffer: buffer,
                                                              converter: converter,
@@ -91,6 +112,12 @@ final class AudioCaptureService: @unchecked Sendable {
                                                              log: log)
             if !samples.isEmpty {
                 pump.append(samples: samples, sampleRate: Int32(targetSampleRate))
+                if let writerRef {
+                    AudioCaptureService.writeSamples(samples,
+                                                     to: writerRef,
+                                                     format: target,
+                                                     log: log)
+                }
             }
         }
 
@@ -98,12 +125,14 @@ final class AudioCaptureService: @unchecked Sendable {
             try engine.start()
         } catch {
             inputNode.removeTap(onBus: 0)
+            self.fileWriter = nil
+            self.recordingURL = nil
             throw .engineStartFailed(String(describing: error))
         }
 
         self.engine = engine
         self.capturing = true
-        log.debug("Audio capture started: input=\(inputFormat.sampleRate, privacy: .public)Hz")
+        log.debug("Audio capture started: input=\(inputFormat.sampleRate, privacy: .public)Hz, wav=\(url?.lastPathComponent ?? "<none>", privacy: .public)")
     }
 
     func stop() {
@@ -113,7 +142,80 @@ final class AudioCaptureService: @unchecked Sendable {
             engine.stop()
             self.engine = nil
             self.capturing = false
-            self.log.debug("Audio capture stopped")
+            // Releasing the AVAudioFile flushes its remaining frames to disk.
+            // Keep `recordingURL` populated so callers can pick it up.
+            self.fileWriter = nil
+            self.log.debug("Audio capture stopped, wav=\(self.recordingURL?.lastPathComponent ?? "<none>", privacy: .public)")
+        }
+    }
+
+    /// Build the destination URL + AVAudioFile writer for the WAV pass.
+    /// Returns (nil, nil) if anything fails — caller proceeds without
+    /// persistence so the streaming pipeline isn't impacted.
+    private static func makeFileWriter(targetFormat: AVAudioFormat,
+                                       log: Logger) -> (AVAudioFile?, URL?) {
+        let fm = FileManager.default
+        guard let appSupport = fm.urls(for: .applicationSupportDirectory,
+                                       in: .userDomainMask).first else {
+            log.error("recording: no Application Support directory")
+            return (nil, nil)
+        }
+        let dir = appSupport
+            .appendingPathComponent("Aftertalk", isDirectory: true)
+            .appendingPathComponent("Recordings", isDirectory: true)
+        do {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        } catch {
+            log.error("recording: mkdir failed: \(error.localizedDescription, privacy: .public)")
+            return (nil, nil)
+        }
+        let url = dir.appendingPathComponent("\(UUID().uuidString).wav", isDirectory: false)
+        // AVAudioFile WAV settings: float32, mono, 16 kHz, little-endian, non-interleaved.
+        // Using `settings: targetFormat.settings` lets CoreAudio pick the matching
+        // file format; we override the type to .wav by writing to a .wav URL.
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: targetFormat.sampleRate,
+            AVNumberOfChannelsKey: Int(targetFormat.channelCount),
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: true
+        ]
+        do {
+            let file = try AVAudioFile(forWriting: url,
+                                       settings: settings,
+                                       commonFormat: .pcmFormatFloat32,
+                                       interleaved: false)
+            return (file, url)
+        } catch {
+            log.error("recording: AVAudioFile open failed: \(error.localizedDescription, privacy: .public)")
+            return (nil, nil)
+        }
+    }
+
+    /// Write the converted 16 kHz mono Float32 samples into the WAV file.
+    /// Errors are logged + dropped — recording must not crash if disk hiccups.
+    private static func writeSamples(_ samples: [Float],
+                                     to file: AVAudioFile,
+                                     format: AVAudioFormat,
+                                     log: Logger) {
+        guard !samples.isEmpty,
+              let buffer = AVAudioPCMBuffer(pcmFormat: format,
+                                            frameCapacity: AVAudioFrameCount(samples.count)),
+              let channel = buffer.floatChannelData?[0] else {
+            return
+        }
+        samples.withUnsafeBufferPointer { src in
+            if let base = src.baseAddress {
+                channel.update(from: base, count: samples.count)
+            }
+        }
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        do {
+            try file.write(from: buffer)
+        } catch {
+            log.error("recording: write failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
