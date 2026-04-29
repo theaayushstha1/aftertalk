@@ -21,6 +21,9 @@ struct SettingsView: View {
     @Query private var chunks: [TranscriptChunk]
 
     @State private var verifyState: VerifyState = .idle
+    @State private var perfCSVURL: URL?
+
+    let perf: SessionPerfSampler
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -40,12 +43,18 @@ struct SettingsView: View {
                     .padding(.bottom, 28)
                 verifyBlock
                     .padding(.horizontal, 24)
+                    .padding(.bottom, 28)
+                perfBlock
+                    .padding(.horizontal, 24)
                     .padding(.bottom, 80)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(palette.bg.ignoresSafeArea())
         .atTheme()
+        .task {
+            perfCSVURL = await perf.currentOutputURL()
+        }
     }
 
     // MARK: - Header
@@ -274,6 +283,46 @@ struct SettingsView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 4)
+        }
+    }
+
+    // MARK: - Perf
+
+    /// Share-sheet handle to the in-flight perf CSV. Resolves to the active
+    /// `SessionPerfSampler`'s output URL — the file is rewritten every ~10 s
+    /// so a share invoked mid-session captures a recent snapshot. Used to
+    /// pull the perf log off the device for the Day 6 chart.
+    private var perfBlock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            QSEyebrow("Performance log", color: palette.faint)
+            if let url = perfCSVURL {
+                ShareLink(item: url) {
+                    Text("Share session perf CSV")
+                        .font(.atBody(14, weight: .semibold))
+                        .foregroundStyle(palette.ink)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: AT.Radius.card, style: .continuous)
+                                .fill(palette.surface)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: AT.Radius.card, style: .continuous)
+                                        .stroke(palette.line, lineWidth: 0.5)
+                                )
+                        )
+                }
+                Text("1 Hz sampler · memory, CPU, thermal, battery. Flushed every 10 s. Use AirDrop or Files to pull off device.")
+                    .font(.atBody(11.5, weight: .regular))
+                    .foregroundStyle(palette.faint)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
+            } else {
+                Text("Initializing perf log…")
+                    .font(.atBody(11.5, weight: .regular))
+                    .foregroundStyle(palette.faint)
+                    .frame(maxWidth: .infinity)
+            }
         }
     }
 

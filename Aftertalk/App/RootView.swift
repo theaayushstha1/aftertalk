@@ -11,14 +11,16 @@ struct RootView: View {
     // which tab switches could reset, dropping the AsyncStream consumer
     // tasks while the audio engine kept running.
     let recording: RecordingViewModel
+    let perf: SessionPerfSampler
 
     @State private var pipeline: MeetingProcessingPipeline?
     @State private var qa: QAContext?
     @State private var debugVisible = false
     @State private var tabSelection: Int = 0
 
-    init(recording: RecordingViewModel) {
+    init(recording: RecordingViewModel, perf: SessionPerfSampler) {
         self.recording = recording
+        self.perf = perf
     }
 
     var body: some View {
@@ -36,7 +38,7 @@ struct RootView: View {
                     .tabItem { Label("Ask", systemImage: "rectangle.stack.badge.person.crop") }
                     .tag(2)
 
-                SettingsView()
+                SettingsView(perf: perf)
                     .tabItem { Label("Settings", systemImage: "gearshape") }
                     .tag(3)
             }
@@ -349,7 +351,7 @@ private struct PipelineStatusView: View {
 }
 
 #Preview {
-    RootView(recording: RecordingViewModel())
+    RootView(recording: RecordingViewModel(), perf: SessionPerfSampler())
         .environment(PrivacyMonitor())
         .modelContainer(AftertalkPersistence.makeContainer())
 }
