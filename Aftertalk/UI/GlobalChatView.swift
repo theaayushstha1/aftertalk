@@ -166,7 +166,31 @@ struct GlobalChatView: View {
         messages.isEmpty && !holding && ctx.orchestrator.stage == .idle && ctx.orchestrator.liveAnswer.isEmpty
     }
 
+    @ViewBuilder
     private var idleBlock: some View {
+        if meetings.isEmpty {
+            noMeetingsBlock
+        } else {
+            populatedIdleBlock
+        }
+    }
+
+    private var noMeetingsBlock: some View {
+        VStack(alignment: .center, spacing: AT.Space.md) {
+            QSEyebrow("No conversation yet", color: palette.faint)
+            QSBody(
+                text: "Record a meeting first, then come back here to ask anything across every transcript on this device.",
+                size: 14,
+                color: palette.mute
+            )
+            .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, AT.Space.xxl)
+        .padding(.top, 96)
+    }
+
+    private var populatedIdleBlock: some View {
         VStack(alignment: .leading, spacing: 0) {
             QSTitle(
                 text: "Hold the dot.\nAsk across every meeting.",
@@ -560,7 +584,7 @@ private struct CrossMeetingBlock: View {
                     .font(.atSerif(19, weight: .regular))
                     .italic()
                     .lineSpacing(4)
-                    .foregroundColor(Color(red: 0.12, green: 0.10, blue: 0.08))
+                    .foregroundColor(palette.ink)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else {
@@ -574,7 +598,7 @@ private struct CrossMeetingBlock: View {
                     Text(message.text)
                         .font(.atBody(16.5, weight: .regular))
                         .lineSpacing(5)
-                        .foregroundColor(Color(red: 0.12, green: 0.10, blue: 0.08))
+                        .foregroundColor(palette.ink)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if !message.citations.isEmpty {

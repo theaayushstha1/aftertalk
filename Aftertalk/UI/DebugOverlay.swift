@@ -1,10 +1,26 @@
 import SwiftUI
 
+/// Engineering HUD. Only ever rendered in DEBUG builds — release builds get
+/// an `EmptyView` shell so the submission video can never accidentally show
+/// internal counters. The toggle in `RootView` (double-tap on the recording
+/// surface) is preserved verbatim; in release the overlay just refuses to
+/// paint anything regardless of the toggle state.
 struct DebugOverlay: View {
     let recording: RecordingViewModel
     let privacy: PrivacyMonitor
 
     var body: some View {
+        #if DEBUG
+        debugBody
+        #else
+        EmptyView()
+        #endif
+    }
+
+    #if DEBUG
+    @Environment(\.atPalette) private var palette
+
+    private var debugBody: some View {
         VStack {
             HStack {
                 Spacer()
@@ -20,15 +36,15 @@ struct DebugOverlay: View {
                     row("Privacy", String(describing: privacy.state).split(separator: "(").first.map(String.init) ?? "—")
                     if let err = recording.lastError {
                         Text(err)
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(.red)
+                            .font(.atMono(10, weight: .medium))
+                            .foregroundStyle(palette.accent)
                             .frame(maxWidth: 220, alignment: .trailing)
                             .multilineTextAlignment(.trailing)
                     }
                 }
-                .font(.caption.monospaced())
+                .font(.atMono(10.5, weight: .medium))
                 .padding(10)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: AT.Radius.base, style: .continuous))
                 .padding(.top, 60)
                 .padding(.trailing, 16)
             }
@@ -39,8 +55,9 @@ struct DebugOverlay: View {
 
     private func row(_ k: String, _ v: String) -> some View {
         HStack {
-            Text(k).foregroundStyle(.secondary)
-            Text(v).foregroundStyle(.primary)
+            Text(k).foregroundStyle(palette.faint)
+            Text(v).foregroundStyle(palette.ink)
         }
     }
+    #endif
 }

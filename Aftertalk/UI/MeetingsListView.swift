@@ -156,13 +156,17 @@ struct MeetingsListView: View {
     // MARK: - Empty
 
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .center, spacing: AT.Space.md) {
             QSEyebrow("No meetings yet", color: palette.faint)
-            QSBody(text: "Tap the dot to capture your first meeting. Everything stays on this device.",
-                   color: palette.mute)
+            QSBody(
+                text: "Tap the dot to capture your first meeting. Everything stays on this device.",
+                color: palette.mute
+            )
+            .multilineTextAlignment(.center)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 32)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, AT.Space.xxl)
+        .padding(.top, 96)
     }
 
     // MARK: - Sections
@@ -360,13 +364,13 @@ private struct MeetingRow: View {
             Text(meeting.title)
                 .font(.atDisplay(17, weight: .semibold))
                 .tracking(-0.3)
-                .foregroundColor(Color(red: 0.12, green: 0.10, blue: 0.08))
+                .foregroundColor(palette.ink)
                 .lineLimit(2)
             Spacer(minLength: 8)
             Text(timeText)
                 .font(.atMono(11, weight: .medium))
                 .monospacedDigit()
-                .foregroundColor(Color(red: 0.52, green: 0.47, blue: 0.38))
+                .foregroundColor(palette.faint)
         }
     }
 
