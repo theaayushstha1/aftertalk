@@ -4,9 +4,9 @@
 
 A personal experiment in fully on-device meeting intelligence for iOS 26+. Records a meeting in airplane mode, transcribes locally, generates a structured summary, and lets you ask follow-up questions by voice — every model runs on the iPhone's Neural Engine, no network, no cloud. MIT licensed.
 
-## Status (Day 5 of 7)
+## Status (Day 6 of 7)
 
-End-to-end loop is live on hardware: record → on-device transcript → diarized structured summary → hold-to-talk **or** push-to-talk voice Q&A with neural TTS, grounded streaming answers, citations, and cross-meeting global chat. Measured on iPhone Air: **TTFT 104 ms, total Q&A turn 1,440 ms.** UI shipped to the Quiet Studio editorial spec — Onboarding, Record, Meetings, Detail (Summary/Transcript/Actions tabs), Ask, Global Ask, Settings (live privacy audit).
+End-to-end loop is live on hardware: record → on-device transcript → diarized structured summary → hold-to-talk **or** push-to-talk voice Q&A with neural TTS, grounded streaming answers, citations, and cross-meeting global chat. Measured on iPhone Air: **TTFT 104 ms, total Q&A turn 1,440 ms.** UI shipped to the Quiet Studio editorial spec — Onboarding, Record, Meetings, Detail (Summary/Transcript/Actions tabs), Ask, Global Ask, Settings (live privacy audit). Day 6 added recording-flow ergonomics (minimize-while-recording, floating session pill, auto-dismissing summary toast) plus reliability fixes across the post-recording path (Parakeet subword detokenizer, safety-classifier retry, duplicate-row dedupe).
 
 | Layer | Pick | Notes |
 |---|---|---|
@@ -145,6 +145,8 @@ The Quiet Studio design system — 14 screens against shared `QSEyebrow / QSTitl
 
 **Day 5 — Quiet Studio refactor + cross-meeting + Settings audit.** Full editorial UI pass against the QS handoff: shared `QSEyebrow / QSTitle / QSBody / QSPrivacyBadge / QSPrimaryButton / QSDivider / BreathingOrb / ImmersiveWaveform` primitives, light/dark palette, `\.atPalette` env-key. OnboardingFlow (3-screen privacy gate). RecordButton + immersive waveform record screen. ProcessingView with breathing orb + ordered model steps. MeetingsListView editorial layout. MeetingDetailView with Summary/Transcript/Actions tab strip. ChatThreadView with replay + citation pills. GlobalChatView cross-meeting thread (ChatThread.isGlobal). HierarchicalRetriever Layer 1 (summary search) + Layer 2 (chunk scoping). SettingsView privacy manifesto with live `@Query` audit counts, `ModelLocator` filesystem probes, `PrivacyMonitor.state` subtitles, Verify button state machine. Grounding gate widened so newly-recorded meetings surface in global Ask. UI hardening pass — hardcoded ink/faint colors on NavigationLink labels and AuditRow text where SwiftUI's button-tint inheritance was washing them out.
 
+**Day 6 — Polish + reliability.** Recording-flow ergonomics: minimize-while-recording (chevron + floating "RECORDING · MM:SS" pill across tabs, audio engine + Moonshine streamer keep running) so users can navigate Meetings/Search/Chat/Settings during a live session. Persistent "Summary ready" banner replaced with an auto-dismissing top-of-screen pipeline toast that hard-resets when a new recording starts. Hold-to-ask CTA lifted clear of the tab bar's record FAB. Phone call / Siri / route-change interruption handling (auto-pause + manual-resume nudge). Quiet Studio palette tightening (ink near-black for AA contrast on cream surfaces, light-only theme lock to stop dark-mode bleed-through). Time-aware Parakeet detokenizer (was emitting "st age" / "Vanc ouv er"; now resolves subword splits via 20 ms audio-gap heuristic). Safety-classifier refusal retry via map-reduce halving. View-side meetings dedupe for the rare re-fired session edge case. Search-mode pills stay on one row on iPhone Air. Settings → Replay Onboarding debug toggle so the privacy gate can be re-tested without uninstall/reinstall.
+
 ## Privacy
 
 Three layers of audit:
@@ -186,8 +188,8 @@ Requirements: Xcode 17+, iOS 26+ device, Apple Developer signing.
 - [x] Day 3 — Voice Q&A loop with grounding gate
 - [x] Day 4 — Pyannote diarization + Kokoro neural TTS
 - [x] Day 5 — Quiet Studio UI + cross-meeting global chat + Settings privacy audit
-- [ ] Day 6 — Custom QS tab bar + center record FAB, MetricKit profiling, edge cases
-- [ ] Day 7 — Demo video + submission
+- [x] Day 6 — QS tab bar + record FAB, recording ergonomics, interruption handling, reliability polish
+- [ ] Day 7 — MetricKit profiling, demo video, submission
 
 ## Acknowledgments
 
