@@ -70,19 +70,23 @@ actor PyannoteDiarizationService: DiarizationService {
             throw DiarizationError.modelMissing("DiarizerModels.load failed: \(error)")
         }
 
-        // Diarization tuning. The default `clusteringThreshold=0.7` (cosine
-        // boundary 0.84) under-segments on similar-voice audio (two podcast
-        // hosts with the same accent and pitch land at ~0.78 cosine distance,
-        // below the boundary, and collapse to one cluster). We tighten to
-        // 0.55 (boundary ~0.71) so genuinely different voices split, then
-        // rely on `collapseSpuriousClusters` to merge same-voice ghost
-        // clusters by centroid distance — the standard "oversample then
-        // collapse" pattern. `minSpeechDuration=0.6` is slightly looser than
-        // the 1.0s default so brief turns ("Yeah, exactly") still get an
-        // embedding that contributes to the cluster.
+        // Diarization tuning. FluidAudio docs: "Lower = more speakers."
+        // Default 0.7 collapses two voices captured through the same acoustic
+        // path (podcast played through speakers → phone mic, two hosts with
+        // similar timbre) into one cluster. We push to 0.5 — past 0.55 we
+        // start splitting genuine same-speaker turns into ghost clusters,
+        // but `collapseSpuriousClusters` cleans those up by merging tiny
+        // ghosts (< 2 segments AND < 5% airtime) into their nearest neighbor
+        // by centroid distance. Standard "oversample then collapse" pattern.
+        //
+        // `minSpeechDuration=0.4` (vs default 1.0) is critical for the second
+        // speaker on lopsided conversations — backchannels and 1-2 word
+        // confirmations from the quieter host need to contribute embeddings,
+        // otherwise FluidAudio never sees enough audio from them to register
+        // a separate cluster at all.
         var cfg = DiarizerConfig.default
-        cfg.clusteringThreshold = 0.6
-        cfg.minSpeechDuration = 0.6
+        cfg.clusteringThreshold = 0.5
+        cfg.minSpeechDuration = 0.4
         let manager = DiarizerManager(config: cfg)
         // initialize(models:) is synchronous + consuming. Do NOT `await` it.
         manager.initialize(models: models)
@@ -180,8 +184,8 @@ actor PyannoteDiarizationService: DiarizationService {
     static func collapseSpuriousClusters(
         _ segments: [TimedSpeakerSegment],
         logger: Logger,
-        minSegments: Int = 3,
-        minAirtimeFraction: Float = 0.08
+        minSegments: Int = 2,
+        minAirtimeFraction: Float = 0.05
     ) -> [TimedSpeakerSegment] {
         guard !segments.isEmpty else { return [] }
         // Aggregate per speaker: count, airtime, summed embedding for centroid.
@@ -199,6 +203,16 @@ actor PyannoteDiarizationService: DiarizationService {
         }
         guard byId.count > 1 else {
             // Only one cluster, nothing to merge.
+            return segments
+        }
+        // Two clusters means FluidAudio thinks there are two distinct voices.
+        // Do not second-guess that — collapsing here is the bug the user hit:
+        // a podcast with one dominant host + one quieter host produced two
+        // clusters where the quieter host had < 8% airtime, and we collapsed
+        // them. Preserve any 2-cluster outcome intact; the ghost-cluster
+        // problem only manifests at 3+ clusters in practice.
+        guard byId.count > 2 else {
+            logger.info("collapse: 2 clusters detected — trusting FluidAudio, no merge")
             return segments
         }
 
