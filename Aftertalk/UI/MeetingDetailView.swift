@@ -52,7 +52,14 @@ struct MeetingDetailView: View {
             if selectedTab == .summary, qaContext != nil {
                 askButton
                     .padding(.trailing, 20)
-                    .padding(.bottom, 36)
+                    // The tab bar's record FAB lifts ~52pt above the bar's top
+                    // edge. The reserved safeAreaInset under us is only the bar
+                    // height — the FAB draws *outside* that frame, so a small
+                    // bottom padding here would visually collide with the FAB
+                    // (the user sees a dark pill merging with the dark FAB).
+                    // Lift well past the FAB tip so the pill reads as a
+                    // distinct floating CTA above the tab strip.
+                    .padding(.bottom, 88)
             }
         }
         .navigationBarHidden(true)
@@ -480,8 +487,18 @@ struct MeetingDetailView: View {
             .foregroundStyle(palette.bg)
             .padding(.horizontal, 20)
             .frame(height: 48)
-            .background(Capsule().fill(palette.ink))
-            .shadow(color: Color.black.opacity(0.18), radius: 12, x: 0, y: 12)
+            .background(
+                Capsule()
+                    .fill(palette.ink)
+                    .overlay(
+                        Capsule()
+                            .stroke(palette.bg.opacity(0.18), lineWidth: 1)
+                    )
+            )
+            // Soft halo only — heavier `y: 12` shadow read as a second pill
+            // shape behind the CTA, which compounded the collision with the
+            // tab bar's FAB shadow underneath.
+            .shadow(color: Color.black.opacity(0.22), radius: 18, x: 0, y: 6)
         }
         .buttonStyle(.plain)
     }
