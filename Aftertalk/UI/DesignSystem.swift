@@ -28,18 +28,25 @@ enum AT {
         let moss: Color
     }
 
+    // Text colors are pushed near-black so they read clearly on every
+    // surface (bg + surface + surfaceAlt). The user reported washed-out
+    // text on device — root cause was a colorScheme mismatch (see
+    // ATThemeModifier below) which is now locked. Tokens ramp:
+    //   ink   17:1  — primary copy, headlines
+    //   mute  11:1  — secondary copy, body captions
+    //   faint  6.4:1 — eyebrow labels, mono metadata, audit sub-lines
     static let light = Palette(
         bg: Color(hex: 0xECE4D2),
         surface: Color(hex: 0xF4EDDC),
         surfaceAlt: Color(hex: 0xE5DBC4),
-        ink: Color(hex: 0x1F1A14),
-        mute: Color(hex: 0x5A4F3F),
-        faint: Color(hex: 0x857862),
-        line: Color(hex: 0x1F1A14, opacity: 0.10),
-        lineStrong: Color(hex: 0x1F1A14, opacity: 0.18),
+        ink: Color(hex: 0x0A0805),
+        mute: Color(hex: 0x241D14),
+        faint: Color(hex: 0x4A3F2E),
+        line: Color(hex: 0x1F1A14, opacity: 0.22),
+        lineStrong: Color(hex: 0x1F1A14, opacity: 0.40),
         accent: Color(hex: 0x9C4A2B),
         accentSoft: Color(hex: 0xD88160),
-        positive: Color(hex: 0x3F8852),
+        positive: Color(hex: 0x2E6638),
         sand: Color(hex: 0xC8A87C),
         moss: Color(hex: 0x7A8B6F)
     )
@@ -48,14 +55,14 @@ enum AT {
         bg: Color(hex: 0x1A1612),
         surface: Color(hex: 0x231D17),
         surfaceAlt: Color(hex: 0x231D17),
-        ink: Color(hex: 0xF0E7D3),
-        mute: Color(hex: 0x9A8F7A),
-        faint: Color(hex: 0x9A8F7A),
-        line: Color(hex: 0xF0E7D3, opacity: 0.12),
-        lineStrong: Color(hex: 0xF0E7D3, opacity: 0.12),
-        accent: Color(hex: 0x9C4A2B),
-        accentSoft: Color(hex: 0xD88160),
-        positive: Color(hex: 0x3F8852),
+        ink: Color(hex: 0xF6EEDA),
+        mute: Color(hex: 0xC9BEA6),
+        faint: Color(hex: 0xA89B82),
+        line: Color(hex: 0xF0E7D3, opacity: 0.16),
+        lineStrong: Color(hex: 0xF0E7D3, opacity: 0.28),
+        accent: Color(hex: 0xD88160),
+        accentSoft: Color(hex: 0xE99A7C),
+        positive: Color(hex: 0x6FB082),
         sand: Color(hex: 0xC8A87C),
         moss: Color(hex: 0x7A8B6F)
     )
@@ -114,13 +121,16 @@ extension View {
 }
 
 private struct ATThemeModifier: ViewModifier {
-    @Environment(\.colorScheme) private var scheme
+    // Quiet Studio is a light-only design. Locking the palette to AT.light here
+    // so that on a dark-mode device the inner views don't paint cream-on-beige
+    // (which is invisible). `.preferredColorScheme(.light)` also keeps system
+    // controls (navigation chrome, system text fields) on the light variant.
     func body(content: Content) -> some View {
-        let palette = scheme == .dark ? AT.dark : AT.light
         content
-            .environment(\.atPalette, palette)
-            .background(palette.bg.ignoresSafeArea())
-            .tint(palette.accent)
+            .environment(\.atPalette, AT.light)
+            .background(AT.light.bg.ignoresSafeArea())
+            .tint(AT.light.accent)
+            .preferredColorScheme(.light)
     }
 }
 
