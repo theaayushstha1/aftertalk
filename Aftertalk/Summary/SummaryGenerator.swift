@@ -21,13 +21,17 @@ enum SummaryError: Error, CustomStringConvertible {
 
 final class FoundationModelsSummaryGenerator: LLMService, @unchecked Sendable {
     private let log = Logger(subsystem: "com.theaayushstha.aftertalk", category: "Summary")
+    fileprivate static let staticLog = Logger(subsystem: "com.theaayushstha.aftertalk", category: "Summary")
 
     /// Foundation Models hard-caps input + output at 4096 tokens. We budget
     /// ~250 system + ~150 prompt scaffolding + ~1200 generation, leaving
     /// roughly 2400 tokens for transcript content. At ~4 chars/token that's
-    /// ~9600 chars; we conservatively cap windows at 5000 to absorb ASR
+    /// ~9600 chars; we conservatively cap windows at 3500 to absorb ASR
     /// punctuation drift and tokenize-fat numerals/hyphens/speaker labels.
-    private static let maxCharsPerWindow = 5_000
+    /// Tighter cap = more partials, but each is safely under context, which
+    /// matters on 45+ minute recordings where merged outputs would otherwise
+    /// re-blow the window during reduce.
+    private static let maxCharsPerWindow = 3_500
 
     /// Hard ceiling for any single sentence fed into the greedy packer.
     /// Moonshine ASR sometimes emits multi-thousand-char "sentences" with
@@ -138,7 +142,7 @@ final class FoundationModelsSummaryGenerator: LLMService, @unchecked Sendable {
         }
 
         if !partials.isEmpty {
-            return (Self.merge(partials), started.duration(to: .now).aftertalkMillis)
+            return (Self.reduce(partials), started.duration(to: .now).aftertalkMillis)
         }
 
         // Every window failed; last-ditch single shot on the whole transcript.
@@ -413,6 +417,21 @@ final class FoundationModelsSummaryGenerator: LLMService, @unchecked Sendable {
         return trimmed
     }
 
+    /// Recursive pair-wise reduce. Reducing in halves keeps each merge bounded
+    /// and balanced so a few noisy windows can't dominate the dedup. Capped at
+    /// depth 3 to mirror `summarizeWindowWithSplit`'s recursion ceiling and
+    /// flatten on small lists.
+    static func reduce(_ partials: [MeetingSummary], depth: Int = 0) -> MeetingSummary {
+        if partials.count <= 1 { return partials.first ?? .empty }
+        if depth >= 3 || partials.count <= 3 {
+            return merge(partials)
+        }
+        let mid = partials.count / 2
+        let left = reduce(Array(partials[..<mid]), depth: depth + 1)
+        let right = reduce(Array(partials[mid...]), depth: depth + 1)
+        return merge([left, right])
+    }
+
     /// Deterministic merge: dedupe by case-insensitive trimmed text, preserve
     /// first-seen order so the meeting reads chronologically. ActionItem
     /// dedup keys on description; first non-nil sanitized owner wins. Caps
@@ -447,12 +466,18 @@ final class FoundationModelsSummaryGenerator: LLMService, @unchecked Sendable {
         }
 
         let mergedActions = actionOrder.compactMap { actionsByKey[$0] }.prefix(20)
-        return MeetingSummary(
+        let merged = MeetingSummary(
             decisions: Array(decisions.values.prefix(15)),
             actionItems: Array(mergedActions),
             topics: Array(topics.values.prefix(12)),
             openQuestions: Array(openQuestions.values.prefix(10))
         )
+        let totalItems = merged.decisions.count + merged.topics.count
+            + merged.actionItems.count + merged.openQuestions.count
+        if partials.count > 1 && totalItems == 0 {
+            staticLog.warning("merge of \(partials.count, privacy: .public) partials yielded empty summary — likely streaming failures in chunk LLM calls")
+        }
+        return merged
     }
 
     private static func normalize(_ s: String) -> String {
