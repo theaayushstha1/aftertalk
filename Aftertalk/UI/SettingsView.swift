@@ -22,6 +22,7 @@ struct SettingsView: View {
 
     @State private var verifyState: VerifyState = .idle
     @State private var perfCSVURL: URL?
+    @AppStorage("aftertalk.onboarded") private var onboarded: Bool = false
 
     let perf: SessionPerfSampler
 
@@ -45,6 +46,9 @@ struct SettingsView: View {
                     .padding(.horizontal, 24)
                     .padding(.bottom, 28)
                 perfBlock
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 28)
+                debugBlock
                     .padding(.horizontal, 24)
                     .padding(.bottom, 80)
             }
@@ -323,6 +327,49 @@ struct SettingsView: View {
                     .foregroundStyle(palette.faint)
                     .frame(maxWidth: .infinity)
             }
+        }
+    }
+
+    // MARK: - Debug
+
+    /// QA helper. Flips `aftertalk.onboarded` back to false so the next
+    /// app launch (or scene re-entry) replays the 3-screen onboarding flow.
+    /// Lets us verify onboarding without uninstalling/reinstalling the app
+    /// on device every iteration.
+    private var debugBlock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            QSEyebrow("Debug", color: palette.faint)
+            Button {
+                onboarded = false
+            } label: {
+                HStack {
+                    Text("Replay onboarding")
+                        .font(.atBody(14, weight: .semibold))
+                        .foregroundStyle(palette.ink)
+                    Spacer()
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(palette.faint)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: AT.Radius.card, style: .continuous)
+                        .fill(palette.surface)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AT.Radius.card, style: .continuous)
+                                .stroke(palette.line, lineWidth: 0.5)
+                        )
+                )
+            }
+            .buttonStyle(.plain)
+            Text("Resets the onboarding flag. The 3-screen flow plays again on next launch.")
+                .font(.atBody(11.5, weight: .regular))
+                .foregroundStyle(palette.faint)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 4)
         }
     }
 
