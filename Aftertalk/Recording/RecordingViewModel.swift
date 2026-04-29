@@ -19,6 +19,15 @@ final class RecordingViewModel {
     var interruptionReason: String?
     var permissionDenied = false
     var transcript: String = ""
+    /// Lines Moonshine has marked `isFinal=true`. Render with full ink. These
+    /// are stable — the model has committed and won't revise them in the
+    /// current session.
+    var committedTranscript: String = ""
+    /// The currently in-flight line (`isFinal=false`). Render dim/italic so
+    /// the user perceives it as "tentative" — matches the grounding-gate
+    /// pattern from CS Navigator: don't display as authoritative until the
+    /// model has actually committed it via `LineCompleted`.
+    var tentativeTranscript: String = ""
     var ttftMillis: Double?
     var samplesIn: Int = 0
     var eventsIn: Int = 0
@@ -96,6 +105,19 @@ final class RecordingViewModel {
         }
     }
 
+    /// Eagerly warm Moonshine's ONNX graphs so the *first* recording's TTFT
+    /// drops from ~1.7s (cold compile) to <250ms. Safe to call repeatedly —
+    /// `MoonshineStreamer.warm()` is idempotent. Wired from AftertalkApp's
+    /// `.onAppear` so the cost amortizes during onboarding / first paint
+    /// instead of stalling the user's first record press.
+    func warmASR() async {
+        do {
+            try await streamer.warm()
+        } catch {
+            log.error("warm: \(String(describing: error), privacy: .public)")
+        }
+    }
+
     func toggle() async {
         if isRecording {
             await stop()
@@ -120,6 +142,8 @@ final class RecordingViewModel {
             startMonotonic = .now
             ttftMillis = nil
             transcript = ""
+            committedTranscript = ""
+            tentativeTranscript = ""
             committedLines.removeAll()
             activeLine = ""
             samplesIn = 0
@@ -235,7 +259,10 @@ final class RecordingViewModel {
         } else {
             activeLine = delta.text
         }
-        transcript = ([committedLines.joined(separator: " "), activeLine]
+        committedTranscript = committedLines.joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        tentativeTranscript = activeLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        transcript = ([committedTranscript, tentativeTranscript]
             .filter { !$0.isEmpty }
             .joined(separator: " "))
             .trimmingCharacters(in: .whitespacesAndNewlines)

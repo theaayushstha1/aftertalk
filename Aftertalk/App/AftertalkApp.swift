@@ -66,6 +66,12 @@ struct AftertalkApp: App {
                     }
                     interruptions.start()
                     Task { await perf.start(eventLabel: "app_appear") }
+                    // Pre-warm Moonshine on app appear so the first record
+                    // press doesn't pay the ~1.7s ONNX-compile TTFT we kept
+                    // seeing on iPhone Air. Detached so launch paints first.
+                    Task.detached(priority: .utility) {
+                        await recording.warmASR()
+                    }
                 }
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {

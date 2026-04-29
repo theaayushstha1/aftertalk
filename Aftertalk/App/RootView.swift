@@ -312,11 +312,22 @@ struct RootView: View {
                         .foregroundStyle(palette.mute)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    Text(recording.transcript)
-                        .font(.atBody(15))
-                        .lineSpacing(4)
-                        .foregroundStyle(palette.ink)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    // Two-tier render. Committed = full ink, weight-stable.
+                    // Tentative = dim/italic so the user reads it as "we're
+                    // still hearing this, may revise". Same isFinal flag the
+                    // Moonshine wrapper already exposes — the grounding-gate
+                    // analog for live ASR.
+                    (
+                        Text(recording.committedTranscript)
+                            .font(.atBody(15))
+                            .foregroundColor(palette.ink)
+                        + Text(recording.committedTranscript.isEmpty || recording.tentativeTranscript.isEmpty ? "" : " ")
+                        + Text(recording.tentativeTranscript)
+                            .font(.atBody(15).italic())
+                            .foregroundColor(palette.faint)
+                    )
+                    .lineSpacing(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if recording.isRecording {
                     HStack(spacing: 8) {
