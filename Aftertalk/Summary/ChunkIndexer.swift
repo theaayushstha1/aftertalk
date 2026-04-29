@@ -167,7 +167,7 @@ struct ChunkIndexer {
         var drafts: [ChunkDraft] = []
         var orderIndex = 0
         for turn in turns {
-            let text = Self.detokenize(turn.words.map(\.text))
+            let text = Self.detokenizeWords(turn.words)
             guard !text.isEmpty else { continue }
             let turnStart = turn.words.first?.startSec ?? 0
             let turnEnd = turn.words.last?.endSec ?? turnStart
@@ -220,12 +220,59 @@ struct ChunkIndexer {
         return drafts
     }
 
-    /// Reassemble Parakeet TDT SentencePiece subword tokens into readable
-    /// text. Tokens that start a new word carry a `▁` (U+2581) prefix or a
-    /// leading space; tokens that continue a word ("don" after "Par") carry
-    /// neither. Joining with `" "` produces "▁Par don" — a literal block
-    /// glyph plus a phantom mid-word space. Strip the marker and concatenate
-    /// without inserting whitespace.
+    /// Time-aware detokenizer for Parakeet TDT word/subword tokens.
+    ///
+    /// Parakeet's SentencePiece BPE sometimes emits a single spoken word as
+    /// two `▁`-marked tokens (e.g. "stage" → `["▁st", "▁age"]`, "Vancouver"
+    /// → `["▁V", "▁anc", "▁ouv", "▁er"]`). The marker convention says both
+    /// pieces start a new word, but the audio shows zero gap between them —
+    /// that's the actual signal that they belong to the same word.
+    ///
+    /// Rule: insert a space between two consecutive tokens only when there's
+    /// a measurable audio gap (≥20ms) OR the token has no leading marker
+    /// AND the previous output ended with a word character. Tokens that are
+    /// time-adjacent to the previous token are treated as subword continuations
+    /// regardless of the marker. Marker / leading whitespace is always stripped.
+    static func detokenizeWords(_ words: [WordSpeakerAssignment]) -> String {
+        // Tokens emitted within this gap (in seconds) are considered subwords
+        // of the same spoken word, even if the model marked them as separate.
+        // 20ms is below typical inter-word pause (~80–150ms) and above any
+        // intra-word audio decoder jitter we've observed in Parakeet TDT.
+        let subwordGapThreshold: Double = 0.020
+        var out = ""
+        var lastEnd: Double = -1
+        for w in words {
+            let raw = w.text
+            if raw.isEmpty { continue }
+            var stripped = raw
+            if stripped.hasPrefix("▁") {
+                stripped = String(stripped.dropFirst())
+            }
+            stripped = String(stripped.drop(while: { $0 == " " }))
+            if stripped.isEmpty {
+                lastEnd = w.endSec
+                continue
+            }
+            if out.isEmpty {
+                out.append(stripped)
+            } else {
+                let gap = w.startSec - lastEnd
+                let hasMarker = raw.hasPrefix("▁") || raw.hasPrefix(" ")
+                let isNewWord = gap >= subwordGapThreshold && hasMarker
+                if isNewWord {
+                    out.append(" ")
+                }
+                out.append(stripped)
+            }
+            lastEnd = w.endSec
+        }
+        return out.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Legacy string-only detokenizer kept for non-timed call sites. Inserts a
+    /// space whenever a token carries the `▁` / leading-space marker. Prefer
+    /// `detokenizeWords(_:)` whenever per-token timings are available — it
+    /// avoids splitting time-adjacent subwords like "stage" → "st age".
     static func detokenize(_ tokens: [String]) -> String {
         var out = ""
         for raw in tokens {
