@@ -67,6 +67,7 @@
 		AA01000000000000000PV001 /* ProcessingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01000000000000000PV002 /* ProcessingView.swift */; };
 		AA01000000000000000OB001 /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01000000000000000OB002 /* OnboardingFlow.swift */; };
 		AA01000000000000000ST001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01000000000000000ST002 /* SettingsView.swift */; };
+		AA01000000000000000TB001 /* QSTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01000000000000000TB002 /* QSTabBar.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -130,6 +131,7 @@
 		AA01000000000000000PV002 /* ProcessingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingView.swift; sourceTree = "<group>"; };
 		AA01000000000000000OB002 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
 		AA01000000000000000ST002 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		AA01000000000000000TB002 /* QSTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QSTabBar.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -316,6 +318,7 @@
 				F02051A737B2B63781E21A1D /* PrivacyBadge.swift */,
 				AA01000000000000000PV002 /* ProcessingView.swift */,
 				AA01000000000000000QS002 /* QSComponents.swift */,
+				AA01000000000000000TB002 /* QSTabBar.swift */,
 				304F5E9E9D51B8C815E2D426 /* RecordButton.swift */,
 				AA01000000000000000SV002 /* SearchView.swift */,
 				AA01000000000000000ST002 /* SettingsView.swift */,
@@ -462,6 +465,7 @@
 				B7D8135A1741CA52EE238534 /* VectorStore.swift in Sources */,
 				AA01000000000000000DS001 /* DesignSystem.swift in Sources */,
 				AA01000000000000000QS001 /* QSComponents.swift in Sources */,
+				AA01000000000000000TB001 /* QSTabBar.swift in Sources */,
 				AA01000000000000000SV001 /* SearchView.swift in Sources */,
 				AA01000000000000000PV001 /* ProcessingView.swift in Sources */,
 				AA01000000000000000OB001 /* OnboardingFlow.swift in Sources */,

@@ -16,7 +16,7 @@ struct RootView: View {
     @State private var pipeline: MeetingProcessingPipeline?
     @State private var qa: QAContext?
     @State private var debugVisible = false
-    @State private var tabSelection: Int = 0
+    @State private var selectedTab: QSTab = .meetings
 
     init(recording: RecordingViewModel, perf: SessionPerfSampler) {
         self.recording = recording
@@ -24,68 +24,53 @@ struct RootView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            TabView(selection: $tabSelection) {
-                recordTab
-                    .tabItem { Label("Record", systemImage: "mic.circle.fill") }
-                    .tag(0)
+        ZStack(alignment: .bottom) {
+            tabContent
+                .safeAreaInset(edge: .bottom) {
+                    // Reserve room so the bar (with FAB lifting +20pt above
+                    // it) never overlaps tab content. 64pt bar + 20pt FAB lift.
+                    Color.clear.frame(height: QSTabBar.barHeight)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                MeetingsListView(qaContext: qa)
-                    .tabItem { Label("Meetings", systemImage: "list.bullet.rectangle.portrait") }
-                    .tag(1)
-
-                GlobalChatView(qaContext: qa)
-                    .tabItem { Label("Ask", systemImage: "rectangle.stack.badge.person.crop") }
-                    .tag(2)
-
-                SettingsView(perf: perf)
-                    .tabItem { Label("Settings", systemImage: "gearshape") }
-                    .tag(3)
-            }
-
-            // Persistent floating recording indicator. Visible across every
-            // tab while a session is live, tappable to jump back to Record.
-            // Hidden when on the Record tab itself (already obvious there).
-            if recording.isRecording && tabSelection != 0 {
-                recordingPill
-                    .padding(.top, 6)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
+            QSTabBar(
+                selection: $selectedTab,
+                recording: recording,
+                onRecordTap: { Task { await recording.toggle() } }
+            )
         }
-        .animation(.easeInOut(duration: 0.2), value: recording.isRecording)
-        .animation(.easeInOut(duration: 0.2), value: tabSelection)
-        .task {
-            configurePipeline()
-        }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: selectedTab)
+        .task { configurePipeline() }
         .alert("Microphone access required", isPresented: .constant(recording.permissionDenied)) {
             Button("OK") { recording.permissionDenied = false }
         } message: {
             Text("Aftertalk needs your microphone to record meetings. Audio never leaves your device.")
         }
-    }
-
-    private var recordingPill: some View {
-        Button {
-            tabSelection = 0
-        } label: {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(palette.accent)
-                    .frame(width: 7, height: 7)
-                Text("RECORDING")
-                    .font(.atMono(10, weight: .bold))
-                    .tracking(1.6)
-                    .foregroundStyle(palette.ink)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .fullScreenCover(isPresented: .constant(recording.isRecording)) {
+            recordingSurface
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Recording in progress. Tap to return to Record tab.")
     }
 
-    private var recordTab: some View {
+    // MARK: - Tab routing
+
+    @ViewBuilder
+    private var tabContent: some View {
+        switch selectedTab {
+        case .meetings:
+            MeetingsListView(qaContext: qa)
+        case .search:
+            SearchView()
+        case .chat:
+            GlobalChatView(qaContext: qa)
+        case .settings:
+            SettingsView(perf: perf)
+        }
+    }
+
+    // MARK: - Recording surface (presented while live)
+
+    private var recordingSurface: some View {
         ZStack(alignment: .top) {
             palette.bg.ignoresSafeArea()
 
@@ -108,7 +93,6 @@ struct RootView: View {
                 }
                 .padding(.bottom, 28)
             }
-            .padding(.horizontal, 0)
 
             if debugVisible {
                 DebugOverlay(recording: recording, privacy: privacy)
