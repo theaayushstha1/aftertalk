@@ -136,6 +136,7 @@ struct RootView: View {
             VStack(spacing: 0) {
                 recordHeader
                 statusEyebrow
+                LowBatteryBanner()
                 timer
                 fragmentLabel
                 ImmersiveWaveform(height: 180, isActive: recording.isRecording)

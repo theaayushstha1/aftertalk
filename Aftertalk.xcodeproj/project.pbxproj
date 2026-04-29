@@ -57,6 +57,7 @@
 		C86AA3217348D7E7FF23F765 /* SpeakerLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E001CBAE0B65AD79BBFBD529 /* SpeakerLabel.swift */; };
 		CA8D590972EFCBF8B21505DC /* PrivacyBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F02051A737B2B63781E21A1D /* PrivacyBadge.swift */; };
 		CF53D1E67434BB25A88B6153 /* HierarchicalRetriever.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A1A28F38945D7CCCC1A8840 /* HierarchicalRetriever.swift */; };
+		D0352E6E7781E2EE7397FCEE /* LowBatteryBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CD0CA0A72221A5F6BB698E2 /* LowBatteryBanner.swift */; };
 		D4B678A402994655B0139A59 /* QSTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316002B5B62131FD50E220B1 /* QSTabBar.swift */; };
 		D4C8D39C83E5CC6B6B10A7DD /* AudioPreprocessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D55C297DFDC40B8B8C450F05 /* AudioPreprocessor.swift */; };
 		D78CC1CDFEA14C8B6AC12A9D /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77CD54E13E785DC804BA533E /* DesignSystem.swift */; };
@@ -87,6 +88,7 @@
 		398184C12D895ABECE14E819 /* BatchASRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchASRService.swift; sourceTree = "<group>"; };
 		3A4464265DAFCF9AAB73E41A /* ChatThreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatThreadView.swift; sourceTree = "<group>"; };
 		3B91B8023F976CD72C5925C7 /* QuestionASR.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionASR.swift; sourceTree = "<group>"; };
+		3CD0CA0A72221A5F6BB698E2 /* LowBatteryBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LowBatteryBanner.swift; sourceTree = "<group>"; };
 		45B8ABF908DE5C6BF3378C9C /* EmbeddingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddingService.swift; sourceTree = "<group>"; };
 		4D33A9372A275187D6009C3F /* VectorStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorStore.swift; sourceTree = "<group>"; };
 		4F88D7B327555BB7CD4DC1F1 /* MeetingSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSummary.swift; sourceTree = "<group>"; };
@@ -319,6 +321,7 @@
 				7E66BD314C64CDF3E3EF026A /* DebugOverlay.swift */,
 				77CD54E13E785DC804BA533E /* DesignSystem.swift */,
 				1F96E75E663C48C30044D7B1 /* GlobalChatView.swift */,
+				3CD0CA0A72221A5F6BB698E2 /* LowBatteryBanner.swift */,
 				02631AEB240C134B4DDD9B11 /* MeetingDetailView.swift */,
 				B97DA4F3A5B7929B96475F1C /* MeetingsListView.swift */,
 				F02051A737B2B63781E21A1D /* PrivacyBadge.swift */,
@@ -442,6 +445,7 @@
 				CF53D1E67434BB25A88B6153 /* HierarchicalRetriever.swift in Sources */,
 				0ED37517486B619CDC57B01B /* KokoroTTSService.swift in Sources */,
 				E4152F9F2F1EC7E9B604A23C /* KokoroVoice.swift in Sources */,
+				D0352E6E7781E2EE7397FCEE /* LowBatteryBanner.swift in Sources */,
 				E9D5B71B4124E0ED927EB66E /* Meeting.swift in Sources */,
 				7036F5A3AAE2FAD466CB6F75 /* MeetingDetailView.swift in Sources */,
 				1B574DF9C5EB6487440F8193 /* MeetingProcessingPipeline.swift in Sources */,
