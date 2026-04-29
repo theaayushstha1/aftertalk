@@ -108,15 +108,28 @@ final class FoundationModelsSummaryGenerator: LLMService, @unchecked Sendable {
             return (.empty, started.duration(to: .now).aftertalkMillis)
         }
 
-        let windows = Self.windows(from: trimmed, maxChars: Self.maxCharsPerWindow)
+        var windows = Self.windows(from: trimmed, maxChars: Self.maxCharsPerWindow)
 
         if windows.count <= 1 {
             do {
                 let summary = try await streamCollect(prompt: prompt(for: trimmed))
                 return (summary, started.duration(to: .now).aftertalkMillis)
             } catch {
-                logTyped(error, label: "single-window")
-                throw SummaryError.generationFailed("\(error)")
+                // On safety refusal, the classifier often accepts smaller chunks
+                // even when it rejects the whole transcript. Halve into multiple
+                // windows and retry via map-reduce instead of giving up.
+                if Self.isRefusal(error) {
+                    log.notice("single-window refused by safety classifier — retrying as map-reduce")
+                    windows = Self.splitWindowInHalf(trimmed)
+                    if windows.count < 2 {
+                        logTyped(error, label: "single-window")
+                        return (.empty, started.duration(to: .now).aftertalkMillis)
+                    }
+                    // fall through into the map-reduce branch below
+                } else {
+                    logTyped(error, label: "single-window")
+                    throw SummaryError.generationFailed("\(error)")
+                }
             }
         }
 
@@ -151,6 +164,13 @@ final class FoundationModelsSummaryGenerator: LLMService, @unchecked Sendable {
             return (summary, started.duration(to: .now).aftertalkMillis)
         } catch {
             logTyped(error, label: "fallback single-shot")
+            // If every attempt was rejected by the safety classifier, surface
+            // an empty summary rather than a hard error so the meeting still
+            // saves with transcript + audio. UI can show "summary unavailable".
+            if Self.isRefusal(error) || Self.isRefusal(lastError ?? error) {
+                log.notice("all attempts refused by safety classifier — returning empty summary")
+                return (.empty, started.duration(to: .now).aftertalkMillis)
+            }
             throw SummaryError.generationFailed("\(lastError ?? error)")
         }
     }
@@ -183,20 +203,49 @@ final class FoundationModelsSummaryGenerator: LLMService, @unchecked Sendable {
                 prompt: partialPrompt(for: window, index: index, total: total)
             )
         } catch let err as LanguageModelSession.GenerationError {
-            if case .exceededContextWindowSize = err, depth < 3 {
+            // Both context overflow and safety refusal benefit from the same
+            // remedy: halve the window and try the smaller pieces. Safety
+            // classifier rejections in particular tend to clear up once a
+            // single triggering phrase is isolated in its own half.
+            let shouldSplit: Bool = {
+                if case .exceededContextWindowSize = err { return true }
+                if case .refusal = err { return true }
+                return false
+            }()
+            if shouldSplit, depth < 3 {
                 let halves = Self.splitWindowInHalf(window)
                 if halves.count == 2 {
-                    let left = try await summarizeWindowWithSplit(
-                        window: halves[0], index: index, total: total, depth: depth + 1
-                    )
-                    let right = try await summarizeWindowWithSplit(
-                        window: halves[1], index: index, total: total, depth: depth + 1
-                    )
-                    return Self.merge([left, right])
+                    var pieces: [MeetingSummary] = []
+                    for half in halves {
+                        do {
+                            let s = try await summarizeWindowWithSplit(
+                                window: half, index: index, total: total, depth: depth + 1
+                            )
+                            pieces.append(s)
+                        } catch {
+                            // Skip halves that still refuse at deeper depth so
+                            // a single offending sentence doesn't tank the whole window.
+                            if Self.isRefusal(error) { continue }
+                            throw error
+                        }
+                    }
+                    if !pieces.isEmpty {
+                        return Self.merge(pieces)
+                    }
                 }
             }
             throw err
         }
+    }
+
+    /// Returns true for `LanguageModelSession.GenerationError.refusal`. The
+    /// associated values vary by SDK build, so we pattern-match the case only.
+    static func isRefusal(_ error: any Error) -> Bool {
+        guard let err = error as? LanguageModelSession.GenerationError else {
+            return false
+        }
+        if case .refusal = err { return true }
+        return false
     }
 
     /// Stream a generation and materialize the last partial snapshot, even
