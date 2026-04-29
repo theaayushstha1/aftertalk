@@ -368,19 +368,17 @@ private struct AuditRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
                     .font(.atBody(14.5, weight: .semibold))
-                    .foregroundColor(Color(red: 0.12, green: 0.10, blue: 0.08))
+                    .foregroundColor(palette.ink)
                 Text(sub)
                     .font(.atBody(11.5, weight: .regular))
-                    .foregroundColor(Color(red: 0.52, green: 0.47, blue: 0.38))
+                    .foregroundColor(palette.faint)
             }
             Spacer()
             Text(value)
                 .font(.atMono(18, weight: .semibold))
                 .tracking(-0.3)
                 .monospacedDigit()
-                .foregroundColor(valueIsZero
-                    ? Color(red: 0.25, green: 0.53, blue: 0.32)
-                    : Color(red: 0.12, green: 0.10, blue: 0.08))
+                .foregroundColor(valueIsZero ? palette.positive : palette.ink)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
