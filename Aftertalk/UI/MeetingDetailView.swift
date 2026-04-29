@@ -8,6 +8,7 @@ import SwiftUI
 struct MeetingDetailView: View {
     let meeting: Meeting
     let qaContext: QAContext?
+    let pipeline: MeetingProcessingPipeline?
     @Environment(\.atPalette) private var palette
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTab: Tab = .summary
@@ -19,6 +20,11 @@ struct MeetingDetailView: View {
     /// Chunk currently highlighted from a citation jump. Cleared after a
     /// short visual pulse so the row briefly reads as "this is the source".
     @State private var highlightedChunkId: UUID? = nil
+    /// Tracks an in-flight reprocess. Disables the button so a double-tap
+    /// can't enqueue a second pipeline run while the first is still tearing
+    /// down + re-running ASR / diarization / chunking.
+    @State private var reprocessing = false
+    @State private var reprocessError: String?
 
     enum Tab: String, CaseIterable, Identifiable {
         case summary, transcript, actions
@@ -32,10 +38,19 @@ struct MeetingDetailView: View {
         }
     }
 
-    init(meeting: Meeting, qaContext: QAContext? = nil) {
+    init(
+        meeting: Meeting,
+        qaContext: QAContext? = nil,
+        pipeline: MeetingProcessingPipeline? = nil,
+        initialScrollChunkId: UUID? = nil
+    ) {
         self.meeting = meeting
         self.qaContext = qaContext
+        self.pipeline = pipeline
+        self.initialScrollChunkId = initialScrollChunkId
     }
+
+    private let initialScrollChunkId: UUID?
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -95,6 +110,24 @@ struct MeetingDetailView: View {
             }
         }
         .atTheme()
+        .task {
+            if let target = initialScrollChunkId, pendingScrollChunkId == nil {
+                selectedTab = .transcript
+                pendingScrollChunkId = target
+            }
+        }
+        .alert(
+            "Repair failed",
+            isPresented: Binding(
+                get: { reprocessError != nil },
+                set: { if !$0 { reprocessError = nil } }
+            ),
+            presenting: reprocessError
+        ) { _ in
+            Button("OK", role: .cancel) { reprocessError = nil }
+        } message: { msg in
+            Text(msg)
+        }
     }
 
     // MARK: - Top bar
@@ -114,10 +147,59 @@ struct MeetingDetailView: View {
             }
             .buttonStyle(.plain)
             Spacer()
+            if canReprocess {
+                reprocessButton
+            }
         }
         .padding(.horizontal, 24)
         .padding(.top, AT.Space.safeTop)
         .padding(.bottom, 12)
+    }
+
+    /// True when the audio is still on disk + a pipeline is wired. Old
+    /// meetings recorded before the audio retention path are intentionally
+    /// non-reprocessable rather than failing midway.
+    private var canReprocess: Bool {
+        guard pipeline != nil, let url = meeting.audioFileURL else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
+    private var reprocessButton: some View {
+        Button {
+            Task { await runReprocess() }
+        } label: {
+            HStack(spacing: 5) {
+                if reprocessing {
+                    ProgressView().controlSize(.mini).tint(palette.mute)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                Text(reprocessing ? "Repairing…" : "Repair")
+                    .font(.atMono(10.5, weight: .semibold))
+                    .tracking(0.4)
+            }
+            .foregroundStyle(palette.mute)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                Capsule()
+                    .fill(palette.surface)
+                    .overlay(Capsule().stroke(palette.line, lineWidth: 0.5))
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(reprocessing)
+    }
+
+    private func runReprocess() async {
+        guard let pipeline, !reprocessing else { return }
+        reprocessing = true
+        let ok = await pipeline.reprocess(meetingId: meeting.id)
+        reprocessing = false
+        if !ok {
+            reprocessError = "Couldn't re-run the pipeline. The audio may be missing or the model failed to load."
+        }
     }
 
     // MARK: - Hero

@@ -52,7 +52,8 @@ final class MeetingProcessingPipeline {
     func process(
         transcript: String,
         durationSeconds: Double,
-        audioFileURL: URL? = nil
+        audioFileURL: URL? = nil,
+        existingMeetingId: UUID? = nil
     ) async -> UUID? {
         guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             stage = .failed("empty transcript")
@@ -62,13 +63,16 @@ final class MeetingProcessingPipeline {
         // Dedupe guard against duplicate `onSessionEnded` fires (bug #8).
         // Stable triple of (transcript prefix, rounded duration, audio file
         // name); if the previous call within the last 5 s produced the same
-        // key, return its meetingId without creating a second row.
+        // key, return its meetingId without creating a second row. Reprocess
+        // bypasses the guard: same audio + same transcript would otherwise
+        // collapse into a no-op "we just did this" return.
         let fingerprint = Self.fingerprint(
             transcript: transcript,
             durationSeconds: durationSeconds,
             audioFileURL: audioFileURL
         )
-        if let last = lastSessionFingerprint,
+        if existingMeetingId == nil,
+           let last = lastSessionFingerprint,
            last.key == fingerprint,
            Date().timeIntervalSince(last.at) < Self.dedupeWindowSeconds {
             log.warning("dedupe: skipping duplicate process(...) call within \(Self.dedupeWindowSeconds, privacy: .public)s — returning existing meetingId")
@@ -87,12 +91,17 @@ final class MeetingProcessingPipeline {
                 transcript: transcript,
                 fallbackDate: Date()
             )
-            let meetingId = try await repository.createMeeting(
-                title: initialTitle,
-                transcript: transcript,
-                duration: durationSeconds,
-                audioFileURL: audioFileURL
-            )
+            let meetingId: UUID
+            if let existing = existingMeetingId {
+                meetingId = existing
+            } else {
+                meetingId = try await repository.createMeeting(
+                    title: initialTitle,
+                    transcript: transcript,
+                    duration: durationSeconds,
+                    audioFileURL: audioFileURL
+                )
+            }
             // Stamp the fingerprint as soon as the row exists so a near-
             // simultaneous re-fire short-circuits even if the rest of the
             // pipeline (polish/diarize/embed) is still running.
@@ -343,6 +352,32 @@ final class MeetingProcessingPipeline {
             log.error("pipeline failed: \(String(describing: error), privacy: .public)")
             stage = .failed("\(error)")
             return nil
+        }
+    }
+
+    /// Reprocess an existing meeting in place. Wipes its chunks, summary,
+    /// summary embedding, and speaker roster, then re-runs the pipeline
+    /// against the persisted audio file so an updated detokenizer / chunker
+    /// can repair recordings that were ingested before the fix landed. The
+    /// chat threads and the original audio survive untouched.
+    func reprocess(meetingId: UUID) async -> Bool {
+        do {
+            guard let inputs = try await repository.reprocessInputs(meetingId: meetingId) else {
+                stage = .failed("reprocess: meeting not found")
+                return false
+            }
+            try await repository.wipeProcessedArtifacts(meetingId: meetingId)
+            let returned = await process(
+                transcript: inputs.transcript,
+                durationSeconds: inputs.duration,
+                audioFileURL: inputs.audio,
+                existingMeetingId: meetingId
+            )
+            return returned == meetingId
+        } catch {
+            log.error("reprocess failed: \(String(describing: error), privacy: .public)")
+            stage = .failed("\(error)")
+            return false
         }
     }
 

@@ -14,6 +14,7 @@ import SwiftUI
 /// `ChatThreadView`; only retrieval scope and citation rendering differ.
 struct GlobalChatView: View {
     let qaContext: QAContext?
+    let pipeline: MeetingProcessingPipeline?
 
     @Query(sort: \Meeting.recordedAt, order: .reverse) private var meetings: [Meeting]
     @Query private var messages: [ChatMessage]
@@ -29,9 +30,20 @@ struct GlobalChatView: View {
     @State private var asking = false
     /// Mirror of ChatThreadView.autoRearmTask — same 6 s post-barge-in window.
     @State private var autoRearmTask: Task<Void, Never>?
+    /// Citation tap target. Drives a fullScreenCover that opens
+    /// `MeetingDetailView` on the source meeting and scrolls to the cited
+    /// chunk on appear. `nil` while no jump is pending.
+    @State private var citationJump: CitationJump?
 
-    init(qaContext: QAContext?) {
+    private struct CitationJump: Identifiable {
+        let meetingId: UUID
+        let chunkId: UUID
+        var id: UUID { chunkId }
+    }
+
+    init(qaContext: QAContext?, pipeline: MeetingProcessingPipeline? = nil) {
         self.qaContext = qaContext
+        self.pipeline = pipeline
         self._messages = Query(
             filter: #Predicate<ChatMessage> { msg in
                 msg.thread?.isGlobal == true
@@ -52,6 +64,29 @@ struct GlobalChatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(palette.bg.ignoresSafeArea())
         .atTheme()
+        .fullScreenCover(item: $citationJump) { jump in
+            NavigationStack {
+                if let m = meetings.first(where: { $0.id == jump.meetingId }) {
+                    MeetingDetailView(
+                        meeting: m,
+                        qaContext: qaContext,
+                        pipeline: pipeline,
+                        initialScrollChunkId: jump.chunkId
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Close") { citationJump = nil }
+                        }
+                    }
+                } else {
+                    VStack {
+                        Text("Meeting unavailable")
+                            .foregroundStyle(palette.mute)
+                        Button("Close") { citationJump = nil }
+                    }
+                }
+            }
+        }
     }
 
     private var unavailable: some View {
@@ -240,7 +275,10 @@ struct GlobalChatView: View {
                         CrossMeetingBlock(
                             message: msg,
                             titlesById: titlesById,
-                            orchestrator: ctx.orchestrator
+                            orchestrator: ctx.orchestrator,
+                            onJumpToCitation: { meetingId, chunkId in
+                                citationJump = CitationJump(meetingId: meetingId, chunkId: chunkId)
+                            }
                         )
                         .id(msg.id)
                     }
@@ -574,6 +612,7 @@ private struct CrossMeetingBlock: View {
     let message: ChatMessage
     let titlesById: [UUID: String]
     let orchestrator: QAOrchestrator
+    var onJumpToCitation: ((UUID, UUID) -> Void)? = nil
     @Environment(\.atPalette) private var palette
 
     var body: some View {
@@ -655,32 +694,39 @@ private struct CrossMeetingBlock: View {
     private func citationRow(_ c: ChunkCitation, divider: Bool) -> some View {
         VStack(spacing: 0) {
             if divider { QSDivider() }
-            HStack(alignment: .top, spacing: 12) {
-                Text(timestamp(c.startSec))
-                    .font(.atMono(10, weight: .bold))
-                    .tracking(0.4)
-                    .foregroundStyle(palette.accent)
-                    .frame(minWidth: 36, alignment: .leading)
-                    .padding(.top, 2)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(meetingTitle(for: c).uppercased())
-                        .font(.atMono(10, weight: .semibold))
-                        .tracking(0.5)
-                        .foregroundStyle(palette.mute)
-                        .lineLimit(1)
-                    if let speaker = c.speakerName, !speaker.isEmpty {
-                        Text(speaker)
-                            .font(.atBody(13, weight: .regular))
+            Button {
+                onJumpToCitation?(c.meetingId, c.chunkId)
+            } label: {
+                HStack(alignment: .top, spacing: 12) {
+                    Text(timestamp(c.startSec))
+                        .font(.atMono(10, weight: .bold))
+                        .tracking(0.4)
+                        .foregroundStyle(palette.accent)
+                        .frame(minWidth: 36, alignment: .leading)
+                        .padding(.top, 2)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(meetingTitle(for: c).uppercased())
+                            .font(.atMono(10, weight: .semibold))
+                            .tracking(0.5)
                             .foregroundStyle(palette.mute)
+                            .lineLimit(1)
+                        if let speaker = c.speakerName, !speaker.isEmpty {
+                            Text(speaker)
+                                .font(.atBody(13, weight: .regular))
+                                .foregroundStyle(palette.mute)
+                        }
                     }
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(onJumpToCitation == nil ? palette.faint : palette.accent)
+                        .padding(.top, 4)
                 }
-                Spacer()
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(palette.faint)
-                    .padding(.top, 4)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
             }
-            .padding(.vertical, 12)
+            .buttonStyle(.plain)
+            .disabled(onJumpToCitation == nil)
         }
     }
 

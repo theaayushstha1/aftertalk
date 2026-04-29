@@ -7,6 +7,7 @@ import SwiftUI
 /// header.
 struct MeetingsListView: View {
     let qaContext: QAContext?
+    let pipeline: MeetingProcessingPipeline?
     @Environment(\.atPalette) private var palette
     @Environment(PrivacyMonitor.self) private var privacy
     @Query(sort: \Meeting.recordedAt, order: .reverse) private var rawMeetings: [Meeting]
@@ -63,7 +64,7 @@ struct MeetingsListView: View {
             .navigationBarHidden(true)
             .navigationDestination(for: UUID.self) { id in
                 if let m = meetings.first(where: { $0.id == id }) {
-                    MeetingDetailView(meeting: m, qaContext: qaContext)
+                    MeetingDetailView(meeting: m, qaContext: qaContext, pipeline: pipeline)
                 } else {
                     Text("Meeting not found.")
                 }

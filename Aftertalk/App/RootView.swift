@@ -117,11 +117,11 @@ struct RootView: View {
     private var tabContent: some View {
         switch selectedTab {
         case .meetings:
-            MeetingsListView(qaContext: qa)
+            MeetingsListView(qaContext: qa, pipeline: pipeline)
         case .search:
             SearchView()
         case .chat:
-            GlobalChatView(qaContext: qa)
+            GlobalChatView(qaContext: qa, pipeline: pipeline)
         case .settings:
             SettingsView(perf: perf)
         }

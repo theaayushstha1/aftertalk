@@ -119,6 +119,40 @@ actor MeetingsRepository {
         try modelContext.save()
     }
 
+    /// Wipe everything the pipeline produces (chunks, summary, summary
+    /// embedding, speaker roster) while keeping the meeting row, its audio,
+    /// and its chat threads intact. Used by the reprocess flow so a bad
+    /// transcript can be re-rendered without losing the recording or the
+    /// user's prior Q&A history.
+    func wipeProcessedArtifacts(meetingId: UUID) throws {
+        guard let meeting = try fetchMeeting(meetingId) else { return }
+        for chunk in meeting.chunks {
+            modelContext.delete(chunk)
+        }
+        for speaker in meeting.speakers {
+            modelContext.delete(speaker)
+        }
+        if let summary = meeting.summary {
+            modelContext.delete(summary)
+            meeting.summary = nil
+        }
+        let embeddingDescriptor = FetchDescriptor<MeetingSummaryEmbedding>(
+            predicate: #Predicate { $0.meetingId == meetingId }
+        )
+        for row in try modelContext.fetch(embeddingDescriptor) {
+            modelContext.delete(row)
+        }
+        try modelContext.save()
+    }
+
+    /// Snapshot of what the pipeline needs to reprocess a meeting in place:
+    /// the original transcript text, duration, and audio file URL. Returns
+    /// nil when the row no longer exists or its audio has been pruned.
+    func reprocessInputs(meetingId: UUID) throws -> (transcript: String, duration: Double, audio: URL?)? {
+        guard let meeting = try fetchMeeting(meetingId) else { return nil }
+        return (meeting.fullTranscript, meeting.durationSeconds, meeting.audioFileURL)
+    }
+
     /// Returns (and lazily creates) the singleton global cross-meeting thread.
     /// Always `isGlobal = true`, `meetingId = nil`. Backs the "Ask" tab so the
     /// user can query across every recorded meeting in one place.
