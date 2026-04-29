@@ -12,15 +12,17 @@ struct RootView: View {
     // tasks while the audio engine kept running.
     let recording: RecordingViewModel
     let perf: SessionPerfSampler
+    let interruptions: AudioInterruptionObserver
 
     @State private var pipeline: MeetingProcessingPipeline?
     @State private var qa: QAContext?
     @State private var debugVisible = false
     @State private var selectedTab: QSTab = .meetings
 
-    init(recording: RecordingViewModel, perf: SessionPerfSampler) {
+    init(recording: RecordingViewModel, perf: SessionPerfSampler, interruptions: AudioInterruptionObserver) {
         self.recording = recording
         self.perf = perf
+        self.interruptions = interruptions
     }
 
     var body: some View {
@@ -126,21 +128,40 @@ struct RootView: View {
     }
 
     private var statusEyebrow: some View {
-        HStack(spacing: 6) {
-            if recording.isRecording {
-                Circle()
-                    .fill(palette.accent)
-                    .frame(width: 7, height: 7)
-                    .overlay(
-                        Circle().stroke(palette.accent.opacity(0.18), lineWidth: 4)
-                    )
+        VStack(spacing: 8) {
+            HStack(spacing: 6) {
+                if recording.isRecording, !recording.isInterrupted {
+                    Circle()
+                        .fill(palette.accent)
+                        .frame(width: 7, height: 7)
+                        .overlay(
+                            Circle().stroke(palette.accent.opacity(0.18), lineWidth: 4)
+                        )
+                }
+                Text(statusLabel)
+                    .font(.atMono(10, weight: .bold))
+                    .tracking(1.6)
+                    .foregroundStyle(statusColor)
             }
-            Text(recording.isRecording ? "RECORDING · LIVE" : "READY · TAP TO BEGIN")
-                .font(.atMono(10, weight: .bold))
-                .tracking(1.6)
-                .foregroundStyle(recording.isRecording ? palette.accent : palette.faint)
+            if recording.isInterrupted, let reason = recording.interruptionReason {
+                Text(reason)
+                    .font(.atBody(12))
+                    .foregroundStyle(palette.mute)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
         }
         .padding(.bottom, 14)
+    }
+
+    private var statusLabel: String {
+        if recording.isInterrupted { return "INTERRUPTED · PAUSED" }
+        return recording.isRecording ? "RECORDING · LIVE" : "READY · TAP TO BEGIN"
+    }
+
+    private var statusColor: Color {
+        if recording.isInterrupted { return palette.mute }
+        return recording.isRecording ? palette.accent : palette.faint
     }
 
     private var timer: some View {
@@ -290,6 +311,15 @@ struct RootView: View {
         let orchestrator = QAOrchestrator(retriever: retriever, tts: tts)
         let questionASR = QuestionASR()
         qa = QAContext(orchestrator: orchestrator, questionASR: questionASR, repository: repository)
+        // Wire the interruption observer's TTS cancel hook now that the
+        // orchestrator exists. We bind the closure here (not in
+        // AftertalkApp.onAppear) because the orchestrator is constructed
+        // lazily once the model container + embeddings are ready. Capturing
+        // a strong reference is fine — the orchestrator outlives the closure
+        // for the remainder of the app's lifetime.
+        recording.onInterruptionCancelTTS = { [orchestrator] in
+            await orchestrator.cancel()
+        }
     }
 }
 
@@ -335,7 +365,11 @@ private struct PipelineStatusView: View {
 }
 
 #Preview {
-    RootView(recording: RecordingViewModel(), perf: SessionPerfSampler())
-        .environment(PrivacyMonitor())
-        .modelContainer(AftertalkPersistence.makeContainer())
+    RootView(
+        recording: RecordingViewModel(),
+        perf: SessionPerfSampler(),
+        interruptions: AudioInterruptionObserver()
+    )
+    .environment(PrivacyMonitor())
+    .modelContainer(AftertalkPersistence.makeContainer())
 }

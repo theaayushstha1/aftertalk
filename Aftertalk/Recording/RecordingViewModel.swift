@@ -7,6 +7,16 @@ import os
 @Observable
 final class RecordingViewModel {
     var isRecording = false
+    /// True while iOS has us paused for a phone call / Siri / FaceTime / route
+    /// change. `isRecording` stays true so the recording surface keeps the
+    /// timer + mic plumbing intact, but the engine is paused and the UI shows
+    /// an explicit "interrupted" badge so the user isn't fooled into thinking
+    /// the meeting is still capturing audio.
+    var isInterrupted: Bool = false
+    /// Human-readable reason for the most recent interruption. Drives the
+    /// banner copy in the recording surface (e.g. "Phone call paused this
+    /// recording" vs "AirPods disconnected").
+    var interruptionReason: String?
     var permissionDenied = false
     var transcript: String = ""
     var ttftMillis: Double?
@@ -25,6 +35,18 @@ final class RecordingViewModel {
 
     var onSessionEnded: (@MainActor (_ transcript: String, _ durationSeconds: Double, _ audioFileURL: URL?) -> Void)?
 
+    /// Called when an interruption begins so the QA orchestrator (which owns
+    /// TTS playback) can cancel any in-flight answer immediately, snapping
+    /// audio focus to the caller. Wired from `AftertalkApp`. Optional —
+    /// recording works without it; only Q&A surfaces install the hook.
+    var onInterruptionCancelTTS: (@MainActor () async -> Void)?
+
+    /// Optional perf-event hook fired when we successfully resume after an
+    /// interruption. Wired from `AftertalkApp` so the SessionPerfSampler
+    /// gets a `recording_resumed_after_interruption` row in its CSV without
+    /// the VM having to know about the sampler type.
+    var onPerfEvent: (@MainActor (_ label: String) async -> Void)?
+
     /// Optional: when set, the VM toggles `isCapturingMeeting` so the
     /// `NWPathMonitor`-based privacy gate can fire `.violation` if any
     /// interface is up while recording. Wired from RootView so the gate is
@@ -38,6 +60,10 @@ final class RecordingViewModel {
     private var deltaTask: Task<Void, Never>?
     private var diagTask: Task<Void, Never>?
     private var startMonotonic: ContinuousClock.Instant?
+    /// Captured at the moment iOS posts `.began`. The interruption observer
+    /// flips this on so a subsequent `.ended` (with `.shouldResume`) knows
+    /// whether to bring the engine back up. Reset on any clean start/stop.
+    private var wasRecordingBeforeInterruption: Bool = false
     /// Wall-clock recording duration in seconds. Drives the recording-screen
     /// timer. Not derived from a stored timestamp because we want it to keep
     /// counting in 1s increments even if no audio frames have arrived yet.
@@ -136,6 +162,9 @@ final class RecordingViewModel {
         let captured = transcript
         // Do NOT cancel deltaTask/diagTask — they're long-lived consumers.
         isRecording = false
+        isInterrupted = false
+        interruptionReason = nil
+        wasRecordingBeforeInterruption = false
         privacyMonitor?.isCapturingMeeting = false
         stopElapsedTimer()
         if !captured.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -148,6 +177,9 @@ final class RecordingViewModel {
         await streamer.stop()
         await AudioSessionManager.shared.deactivate(force: true)
         isRecording = false
+        isInterrupted = false
+        interruptionReason = nil
+        wasRecordingBeforeInterruption = false
         privacyMonitor?.isCapturingMeeting = false
         stopElapsedTimer()
     }
@@ -207,6 +239,79 @@ final class RecordingViewModel {
             .filter { !$0.isEmpty }
             .joined(separator: " "))
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: - Interruption handling
+
+    /// Called from `AudioInterruptionObserver.onInterruptionBegan`. Pauses
+    /// the engine in place (does NOT deactivate the audio session — that
+    /// deadlocks against attached nodes per CLAUDE.md) and cancels any TTS
+    /// that's mid-utterance so the caller's audio takes over cleanly.
+    func handleInterruptionBegan() async {
+        wasRecordingBeforeInterruption = isRecording
+        guard isRecording else { return }
+        log.info("interruption began — pausing capture (wasRecording=\(self.wasRecordingBeforeInterruption, privacy: .public))")
+        capture.pause()
+        // Cancel any answer currently playing through TTS so we don't
+        // half-talk over the caller. The orchestrator's cancel() drops
+        // queued sentences + stops the player.
+        await onInterruptionCancelTTS?()
+        // Surface the partial WAV URL via a side log line. AVAudioFile
+        // flushes per-buffer so frames captured up to this moment are
+        // already on disk; the file header finalizes when stop() releases
+        // the AVAudioFile reference at end-of-meeting.
+        let partialURL = capture.partialRecordingURL()
+        log.info("interruption: partial wav preserved=\(partialURL?.lastPathComponent ?? "<none>", privacy: .public)")
+        isInterrupted = true
+        interruptionReason = "Phone call or Siri paused this recording"
+    }
+
+    /// Called from `AudioInterruptionObserver.onInterruptionEnded`. If the
+    /// OS asked us to resume + we were recording before, restart the engine
+    /// in place and clear the interrupted badge. If `.shouldResume` is
+    /// false, leave the recording in `.interrupted` state so the user can
+    /// stop it manually rather than discovering a silent dead air gap.
+    func handleInterruptionEnded(shouldResume: Bool) async {
+        log.info("interruption ended shouldResume=\(shouldResume, privacy: .public) wasRecording=\(self.wasRecordingBeforeInterruption, privacy: .public)")
+        guard wasRecordingBeforeInterruption else {
+            isInterrupted = false
+            interruptionReason = nil
+            return
+        }
+        if shouldResume {
+            let ok = capture.resume()
+            if ok {
+                isInterrupted = false
+                interruptionReason = nil
+                wasRecordingBeforeInterruption = false
+                await onPerfEvent?("recording_resumed_after_interruption")
+            } else {
+                // Engine refused to come back — most likely the OS still
+                // holds the route. Leave the interrupted state visible so
+                // the user can intervene.
+                lastError = "Could not resume recording after interruption"
+                interruptionReason = "Recording could not resume — tap stop to save what was captured"
+            }
+        } else {
+            // OS told us not to resume (e.g. user accepted a long call).
+            // Keep the interrupted badge up so the user knows audio capture
+            // is still cold even though the call ended.
+            interruptionReason = "Recording was interrupted — tap stop to save what was captured"
+        }
+    }
+
+    /// Called from `AudioInterruptionObserver.onRouteChanged` when the
+    /// previously-selected output device disappeared (AirPods unplugged,
+    /// BT dropout). Pause the engine and surface a banner. Resume happens
+    /// either when the user taps stop + restarts, or via a future "resume"
+    /// affordance on the recording surface.
+    func handleRouteChanged(reason: String) async {
+        guard isRecording else { return }
+        log.info("route change: \(reason, privacy: .public) — pausing capture")
+        capture.pause()
+        wasRecordingBeforeInterruption = true
+        isInterrupted = true
+        interruptionReason = "Audio route changed — tap stop to save what was captured"
     }
 
     private func applyDiag(_ d: ASRDiagnostics) {

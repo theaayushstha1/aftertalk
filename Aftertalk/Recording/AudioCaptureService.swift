@@ -149,6 +149,55 @@ final class AudioCaptureService: @unchecked Sendable {
         }
     }
 
+    /// Pause the engine without tearing down the tap or releasing the file
+    /// writer. Used during AVAudioSession interruptions (incoming call, Siri,
+    /// FaceTime) so the session itself stays configured and we can resume in
+    /// place. We do NOT call `AudioSessionManager.deactivate` from here —
+    /// deactivating with attached nodes deadlocks (see CLAUDE.md "Audio
+    /// session order is sacred"). Calling `pause` while not capturing is a
+    /// no-op so the interruption observer can fire safely.
+    func pause() {
+        queue.sync {
+            guard self.capturing, let engine = self.engine else { return }
+            engine.pause()
+            self.log.debug("Audio capture paused (interruption), wav=\(self.recordingURL?.lastPathComponent ?? "<none>", privacy: .public)")
+        }
+    }
+
+    /// Restart the engine after an interruption ended. Tap + writer + sample
+    /// rate converter are all still wired from the original `start(pump:)`
+    /// call so the resume is essentially a single `engine.start()`. Returns
+    /// false if the engine is already gone (capture was torn down before the
+    /// interruption ended) so the VM can decide whether to surface an error.
+    @discardableResult
+    func resume() -> Bool {
+        var ok = false
+        queue.sync {
+            guard self.capturing, let engine = self.engine else { return }
+            do {
+                try engine.start()
+                ok = true
+                self.log.debug("Audio capture resumed after interruption, wav=\(self.recordingURL?.lastPathComponent ?? "<none>", privacy: .public)")
+            } catch {
+                self.log.error("Audio capture resume failed: \(error.localizedDescription, privacy: .public)")
+                ok = false
+            }
+        }
+        return ok
+    }
+
+    /// Snapshot the in-flight WAV URL during an interruption. Caller can
+    /// surface it to the UI / pipeline so the user doesn't perceive a total
+    /// loss if the interruption never resolves. The actual `AVAudioFile`
+    /// reference lives inside the audio tap closure and CoreAudio flushes
+    /// individual buffers to disk as `file.write(from:)` returns, so the
+    /// frames captured before `pause()` are already persisted — only the
+    /// final WAV header is finalized at `stop()` when the `AVAudioFile`
+    /// deallocates. No-op if no recording is active.
+    func partialRecordingURL() -> URL? {
+        queue.sync { self.recordingURL }
+    }
+
     /// Build the destination URL + AVAudioFile writer for the WAV pass.
     /// Returns (nil, nil) if anything fails — caller proceeds without
     /// persistence so the streaming pipeline isn't impacted.
