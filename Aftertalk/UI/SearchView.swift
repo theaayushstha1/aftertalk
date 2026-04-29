@@ -140,11 +140,15 @@ struct SearchView: View {
     // MARK: - Mode pills
 
     private var modePills: some View {
-        HStack(spacing: 8) {
+        // 4 pills must fit on a 320pt-wide content column (iPhone Air width
+        // minus 24pt horizontal padding). Pre-Day-6 they wrapped to two lines
+        // because each label was ~9 chars × 11pt mono with generous padding.
+        // Now: tighter font + smaller padding + equal-width slots so labels
+        // never truncate or wrap.
+        HStack(spacing: 6) {
             ForEach(SearchMode.allCases) { m in
                 modePill(m)
             }
-            Spacer(minLength: 0)
         }
     }
 
@@ -158,16 +162,18 @@ struct SearchView: View {
             }
         } label: {
             Text(m.label.uppercased())
-                .font(.atMono(11, weight: .medium))
-                .tracking(0.6)
-                .foregroundStyle(active ? palette.ink : palette.faint)
-                .padding(.horizontal, 12)
+                .font(.atMono(9.5, weight: .semibold))
+                .tracking(0.4)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .foregroundStyle(active ? palette.ink : palette.mute)
+                .frame(maxWidth: .infinity)
                 .padding(.vertical, 7)
                 .background(
                     Capsule()
                         .fill(active ? palette.surface : Color.clear)
                         .overlay(
-                            Capsule().stroke(palette.line, lineWidth: 0.5)
+                            Capsule().stroke(active ? palette.lineStrong : palette.line, lineWidth: 0.5)
                         )
                 )
         }
@@ -332,7 +338,7 @@ struct SearchView: View {
             let queryVec = try await embeddings.embed(text)
             let hits = try await store.searchChunks(query: queryVec, scopedTo: nil, topK: 12)
             let titlesById = Dictionary(uniqueKeysWithValues: meetings.map { ($0.id, $0.title) })
-            return hits.map { h in
+            let raw = hits.map { h in
                 SearchHit(
                     chunkId: h.chunkId,
                     meetingId: h.meetingId,
@@ -343,6 +349,7 @@ struct SearchView: View {
                     score: h.score
                 )
             }
+            return Self.dedupeHits(raw)
         } catch {
             return []
         }
@@ -350,10 +357,10 @@ struct SearchView: View {
 
     private func verbatimSearch(_ text: String) -> [SearchHit] {
         let needle = text.lowercased()
-        var out: [SearchHit] = []
+        var raw: [SearchHit] = []
         for meeting in meetings {
             for chunk in meeting.chunks where chunk.text.lowercased().contains(needle) {
-                out.append(SearchHit(
+                raw.append(SearchHit(
                     chunkId: chunk.id,
                     meetingId: meeting.id,
                     meetingTitle: meeting.title,
@@ -362,7 +369,35 @@ struct SearchView: View {
                     text: chunk.text,
                     score: 0
                 ))
-                if out.count >= 200 { return out }
+                if raw.count >= 400 { break }
+            }
+        }
+        return Self.dedupeHits(raw)
+    }
+
+    /// Collapse adjacent or scattered hits whose `(meetingId, text)` is the
+    /// same. Two paths land here:
+    ///   1. The transcript itself contains a recurring phrase that the chunker
+    ///      split across overlapping windows — same meeting, same text, two
+    ///      chunkIds.
+    ///   2. The user accidentally re-ran the pipeline on the same recording
+    ///      and we have two meetings with the same chunk text.
+    /// Either way the user wants one row per unique substantive hit.
+    private static func dedupeHits(_ hits: [SearchHit]) -> [SearchHit] {
+        var seen = Set<String>()
+        var out: [SearchHit] = []
+        out.reserveCapacity(hits.count)
+        for h in hits {
+            let normalized = h.text
+                .lowercased()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            // Same exact phrase across the same meeting collapses; same
+            // phrase in a different meeting is allowed since cross-meeting
+            // hits are genuinely useful information.
+            let key = "\(h.meetingId.uuidString)|\(normalized)"
+            if seen.insert(key).inserted {
+                out.append(h)
             }
         }
         return out
@@ -410,11 +445,22 @@ struct SearchView: View {
 
     private func decisionList(filter: String) -> [DecisionHit] {
         let needle = filter.lowercased()
+        // Dedupe on normalized text globally — if the same decision phrase
+        // shows up twice in the same meeting (LLM emitted it in two list
+        // entries) or across two meetings (same audio re-processed), the
+        // user only wants one row. Keep the first occurrence we encounter
+        // walking newest-first; later ones are silently dropped.
+        var seen = Set<String>()
         var out: [DecisionHit] = []
         for meeting in meetings {
             guard let summary = meeting.summary else { continue }
             for (idx, decision) in summary.decisions.enumerated() {
                 if !needle.isEmpty && !decision.lowercased().contains(needle) { continue }
+                let normalized = decision
+                    .lowercased()
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                guard !normalized.isEmpty, seen.insert(normalized).inserted else { continue }
                 out.append(DecisionHit(
                     id: "\(meeting.id.uuidString)#\(idx)",
                     meetingId: meeting.id,
