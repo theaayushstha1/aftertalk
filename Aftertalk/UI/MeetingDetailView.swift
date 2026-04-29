@@ -156,12 +156,14 @@ struct MeetingDetailView: View {
         .padding(.bottom, 12)
     }
 
-    /// True when the audio is still on disk + a pipeline is wired. Old
-    /// meetings recorded before the audio retention path are intentionally
-    /// non-reprocessable rather than failing midway.
+    /// Show the button whenever the pipeline is wired. We used to also gate
+    /// on `meeting.audioFileURL` + file-on-disk, but that hid the affordance
+    /// on meetings whose URL didn't persist correctly through SwiftData,
+    /// leaving the user with no way to retry. The reprocess attempt itself
+    /// surfaces a clear "audio missing" alert when the file isn't reachable,
+    /// which is far better UX than a silently-absent button.
     private var canReprocess: Bool {
-        guard pipeline != nil, let url = meeting.audioFileURL else { return false }
-        return FileManager.default.fileExists(atPath: url.path)
+        pipeline != nil
     }
 
     private var reprocessButton: some View {
@@ -194,11 +196,22 @@ struct MeetingDetailView: View {
 
     private func runReprocess() async {
         guard let pipeline, !reprocessing else { return }
+        // Surface a clearer error when the saved WAV is gone before we even
+        // start tearing down chunks — otherwise the user sees a generic
+        // "couldn't re-run" message and assumes the whole feature is broken.
+        let audioMissing: Bool = {
+            guard let url = meeting.audioFileURL else { return true }
+            return !FileManager.default.fileExists(atPath: url.path)
+        }()
+        if audioMissing {
+            reprocessError = "Audio file for this meeting isn't on disk anymore, so speakers can't be re-detected. Re-record the conversation to rerun diarization with the latest thresholds."
+            return
+        }
         reprocessing = true
         let ok = await pipeline.reprocess(meetingId: meeting.id)
         reprocessing = false
         if !ok {
-            reprocessError = "Couldn't re-run the pipeline. The audio may be missing or the model failed to load."
+            reprocessError = "Couldn't re-run the pipeline. Check the Xcode console for the failure reason — most often the diarization model failed to load."
         }
     }
 
