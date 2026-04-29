@@ -131,6 +131,11 @@ actor KokoroTTSService: TTSService {
         // symlinked tree under Application Support that mimics the layout
         // FluidAudio expects without duplicating the weight bytes on disk.
         let staging = ModelLocator.kokoroStagingDirectory()
+        // ModelLocator path-builders are now pure URL math; the writable
+        // staging root is created off-main by the detached bootstrap task.
+        // Wait for it before staging the bundle so the first `mkdir` here
+        // doesn't race the bootstrap.
+        await ModelLocator.awaitBootstrap()
         try Self.stageBundleIntoFluidAudioLayout(bundle: bundleDir, staging: staging)
 
         // iOS 26 ANE has an int32 IR regression that crashes Kokoro's compiled

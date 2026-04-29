@@ -1,26 +1,39 @@
 import Foundation
 
 enum ModelLocator {
+    // MARK: - Pure path math (no I/O)
+    //
+    // Every getter below builds a URL via string math only. They're safe to
+    // call from `@MainActor init` of a SwiftUI view model on cold launch
+    // because they never touch the disk. The directories these URLs point
+    // into are created off the main thread by `bootstrap` (a detached
+    // utility-priority task), and any caller that's about to *write* a file
+    // immediately after looking up a path must `await awaitBootstrap()`
+    // first.
+
+    /// Application Support root for our model + recording sandbox. Pure URL
+    /// math: no `FileManager.url(...)` lookup, no `createDirectory`. The
+    /// directory itself is materialized by the bootstrap task; callers that
+    /// need it on disk should await `awaitBootstrap()` before writing.
     static func appSupport() -> URL {
-        let fm = FileManager.default
-        let root = try? fm.url(for: .applicationSupportDirectory,
-                               in: .userDomainMask,
-                               appropriateFor: nil,
-                               create: true)
-        let base = root ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        let dir = base.appendingPathComponent("Aftertalk", isDirectory: true)
+        let base: URL
+        if let root = FileManager.default.urls(for: .applicationSupportDirectory,
+                                               in: .userDomainMask).first {
+            base = root
+        } else {
+            base = URL(fileURLWithPath: NSTemporaryDirectory())
+        }
+        return base
+            .appendingPathComponent("Aftertalk", isDirectory: true)
             .appendingPathComponent("Models", isDirectory: true)
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
     }
 
     static func moonshineModelDirectory() -> URL {
         let folderName = "moonshine-medium-streaming-en"
-        let fm = FileManager.default
         let bundled = Bundle.main.bundleURL
             .appendingPathComponent("Models", isDirectory: true)
             .appendingPathComponent(folderName, isDirectory: true)
-        if fm.fileExists(atPath: bundled.path) {
+        if FileManager.default.fileExists(atPath: bundled.path) {
             return bundled
         }
         return appSupport().appendingPathComponent(folderName, isDirectory: true)
@@ -36,10 +49,9 @@ enum ModelLocator {
     /// allow an Application-Support fallback for hot-swap during development.
     static func parakeetModelDirectory() -> URL {
         let folderName = "parakeet-tdt-0.6b-v2"
-        let fm = FileManager.default
         let bundled = Bundle.main.bundleURL
             .appendingPathComponent(folderName, isDirectory: true)
-        if fm.fileExists(atPath: bundled.path) {
+        if FileManager.default.fileExists(atPath: bundled.path) {
             return bundled
         }
         return appSupport().appendingPathComponent(folderName, isDirectory: true)
@@ -82,13 +94,14 @@ enum ModelLocator {
     /// manager is then redundant but harmless — kept consistent so the TTS
     /// variant `.mlmodelc` lookups also succeed if FluidAudio adds a code path
     /// that honors it.
+    ///
+    /// Pure path math: caller must `await ModelLocator.awaitBootstrap()`
+    /// before writing into this directory. The directory itself is created by
+    /// the bootstrap task off the main thread.
     static func kokoroStagingDirectory() -> URL {
-        let fm = FileManager.default
-        let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        let dir = caches.appendingPathComponent("fluidaudio", isDirectory: true)
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
+        return caches.appendingPathComponent("fluidaudio", isDirectory: true)
     }
 
     /// Directory containing the FluidAudio Pyannote + WeSpeaker Core ML bundle.
@@ -132,5 +145,56 @@ enum ModelLocator {
         guard let dir = diarizerModelDirectory() else { return nil }
         let url = dir.appendingPathComponent("wespeaker_v2.mlmodelc", isDirectory: true)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    // MARK: - Background bootstrap
+    //
+    // `createDirectory(... withIntermediateDirectories: true)` for our two
+    // writable roots used to run synchronously inside `appSupport()` and
+    // `kokoroStagingDirectory()`, both of which were called from
+    // `@MainActor init` of view models. That blocked the main thread for
+    // 50–150 ms on cold launch. We move that work to a detached utility-
+    // priority task that fires on first reference; callers about to write
+    // immediately must `await awaitBootstrap()` first.
+
+    /// Detached task that materializes the writable directories. Created
+    /// lazily on first reference; subsequent references are zero-cost
+    /// (Swift's static-let init is thread-safe and lock-free after the
+    /// first hit).
+    ///
+    /// `nonisolated(unsafe)` is sound here because:
+    ///   1. Swift's static-let init is itself thread-safe (dispatch_once).
+    ///   2. The Task value is immutable once created.
+    ///   3. The body captures only `Sendable` values (FileManager.default
+    ///      and URL are Sendable).
+    nonisolated(unsafe) private static let _bootstrap: Task<Void, Never> = Task.detached(priority: .utility) {
+        let fm = FileManager.default
+        // Two writable roots. Both created with intermediates so partial
+        // failures (e.g. permissions) don't leave a half-state. `try?`
+        // swallows errors — failure here is reported by the writing caller
+        // when its actual write fails, with a more useful error context.
+        try? fm.createDirectory(at: ModelLocator.appSupport(),
+                                withIntermediateDirectories: true)
+        try? fm.createDirectory(at: ModelLocator.kokoroStagingDirectory(),
+                                withIntermediateDirectories: true)
+    }
+
+    /// Await the background bootstrap. Cheap on the second+ call (the task
+    /// has resolved). Callers that look up a path and then immediately
+    /// write a file under it must call this first; lazy-write callers
+    /// (path lookup, existence probe) don't need to.
+    static func awaitBootstrap() async {
+        await _bootstrap.value
+    }
+
+    /// Fire-and-forget kicker. Importing this from app launch ensures the
+    /// detached task is scheduled before any `await awaitBootstrap()` site
+    /// is hit; without it the first `awaitBootstrap()` call still blocks on
+    /// the disk work, defeating the optimization for that one caller.
+    /// Returning `Void` (not the task) keeps the API minimal.
+    @discardableResult
+    static func kickoffBootstrap() -> Bool {
+        _ = _bootstrap
+        return true
     }
 }
