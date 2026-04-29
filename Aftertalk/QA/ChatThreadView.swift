@@ -12,6 +12,11 @@ struct ChatThreadView: View {
     let orchestrator: QAOrchestrator
     let questionASR: QuestionASR
     let repository: MeetingsRepository
+    /// Invoked when the user taps a citation. The host view dismisses this
+    /// sheet, switches the meeting detail to the transcript tab, and scrolls
+    /// to `chunkId`. `nil` when the host doesn't support transcript jumping
+    /// (e.g. cross-meeting global chat scopes).
+    var onJumpToTranscript: ((UUID) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.atPalette) private var palette
@@ -38,11 +43,13 @@ struct ChatThreadView: View {
     init(meeting: Meeting,
          orchestrator: QAOrchestrator,
          questionASR: QuestionASR,
-         repository: MeetingsRepository) {
+         repository: MeetingsRepository,
+         onJumpToTranscript: ((UUID) -> Void)? = nil) {
         self.meeting = meeting
         self.orchestrator = orchestrator
         self.questionASR = questionASR
         self.repository = repository
+        self.onJumpToTranscript = onJumpToTranscript
         let mid = meeting.id
         self._messages = Query(
             filter: #Predicate<ChatMessage> { msg in
@@ -227,7 +234,7 @@ struct ChatThreadView: View {
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 18) {
                     ForEach(messages) { msg in
-                        MessageBlock(message: msg, orchestrator: orchestrator)
+                        MessageBlock(message: msg, orchestrator: orchestrator, onJumpToTranscript: onJumpToTranscript)
                             .id(msg.id)
                     }
                     if holding {
@@ -579,6 +586,7 @@ private struct HoldDot: View {
 private struct MessageBlock: View {
     let message: ChatMessage
     let orchestrator: QAOrchestrator
+    var onJumpToTranscript: ((UUID) -> Void)? = nil
     @Environment(\.atPalette) private var palette
 
     var body: some View {
@@ -648,34 +656,41 @@ private struct MessageBlock: View {
     }
 
     private func citationRow(_ c: ChunkCitation, divider: Bool) -> some View {
-        VStack(spacing: 0) {
-            if divider { QSDivider() }
-            HStack(alignment: .top, spacing: 12) {
-                Text(timestamp(c.startSec))
-                    .font(.atMono(10, weight: .bold))
-                    .tracking(0.4)
-                    .foregroundStyle(palette.accent)
-                    .frame(minWidth: 36, alignment: .leading)
-                    .padding(.top, 2)
-                VStack(alignment: .leading, spacing: 4) {
-                    if let speaker = c.speakerName, !speaker.isEmpty {
-                        Text(speaker.uppercased())
-                            .font(.atMono(10, weight: .semibold))
-                            .tracking(0.5)
+        Button {
+            onJumpToTranscript?(c.chunkId)
+        } label: {
+            VStack(spacing: 0) {
+                if divider { QSDivider() }
+                HStack(alignment: .top, spacing: 12) {
+                    Text(timestamp(c.startSec))
+                        .font(.atMono(10, weight: .bold))
+                        .tracking(0.4)
+                        .foregroundStyle(palette.accent)
+                        .frame(minWidth: 36, alignment: .leading)
+                        .padding(.top, 2)
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let speaker = c.speakerName, !speaker.isEmpty {
+                            Text(speaker.uppercased())
+                                .font(.atMono(10, weight: .semibold))
+                                .tracking(0.5)
+                                .foregroundStyle(palette.mute)
+                        }
+                        Text("\(timestamp(c.startSec))–\(timestamp(c.endSec))")
+                            .font(.atBody(13, weight: .regular))
                             .foregroundStyle(palette.mute)
                     }
-                    Text("\(timestamp(c.startSec))–\(timestamp(c.endSec))")
-                        .font(.atBody(13, weight: .regular))
-                        .foregroundStyle(palette.mute)
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(onJumpToTranscript == nil ? palette.faint : palette.accent)
+                        .padding(.top, 4)
                 }
-                Spacer()
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(palette.faint)
-                    .padding(.top, 4)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
             }
-            .padding(.vertical, 12)
         }
+        .buttonStyle(.plain)
+        .disabled(onJumpToTranscript == nil)
     }
 
     private func timestamp(_ seconds: Double) -> String {

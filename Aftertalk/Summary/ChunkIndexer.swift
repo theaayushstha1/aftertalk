@@ -217,33 +217,55 @@ struct ChunkIndexer {
                 i += advance
             }
         }
-        return drafts
+        return Self.collapseRedundantNeighbors(drafts)
     }
 
-    /// Time-aware detokenizer for Parakeet TDT word/subword tokens.
+    /// Drop a draft when it has the same speaker and text as the previous one.
+    /// This shouldn't happen from the turn-grouping path, but diarization
+    /// fragmentation (Pyannote briefly relabels mid-utterance, then snaps
+    /// back) can produce an identical neighbor. The original ordering is
+    /// preserved; orderIndex is renumbered so retrieval ranking stays stable.
+    private static func collapseRedundantNeighbors(_ drafts: [ChunkDraft]) -> [ChunkDraft] {
+        var out: [ChunkDraft] = []
+        out.reserveCapacity(drafts.count)
+        for d in drafts {
+            let normalized = d.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if normalized.isEmpty { continue }
+            if let last = out.last,
+               last.speakerId == d.speakerId,
+               last.text.trimmingCharacters(in: .whitespacesAndNewlines) == normalized {
+                continue
+            }
+            out.append(ChunkDraft(
+                orderIndex: out.count,
+                text: d.text,
+                startSec: d.startSec,
+                endSec: d.endSec,
+                speakerName: d.speakerName,
+                speakerId: d.speakerId
+            ))
+        }
+        return out
+    }
+
+    /// Detokenizer for word-level entries coming from FluidAudio's `tokenTimings`.
     ///
-    /// Parakeet's SentencePiece BPE sometimes emits a single spoken word as
-    /// two `▁`-marked tokens (e.g. "stage" → `["▁st", "▁age"]`, "Vancouver"
-    /// → `["▁V", "▁anc", "▁ouv", "▁er"]`). The marker convention says both
-    /// pieces start a new word, but the audio shows zero gap between them —
-    /// that's the actual signal that they belong to the same word.
-    ///
-    /// Rule: insert a space between two consecutive tokens only when there's
-    /// a measurable audio gap (≥20ms) OR the token has no leading marker
-    /// AND the previous output ended with a word character. Tokens that are
-    /// time-adjacent to the previous token are treated as subword continuations
-    /// regardless of the marker. Marker / leading whitespace is always stripped.
+    /// FluidAudio's Parakeet wrapper returns one entry per *spoken word* with
+    /// the SentencePiece markers already stripped (`timing.token` is a clean
+    /// word, not a `▁`-prefixed subword). So the right join is a plain space
+    /// between consecutive words. We still strip a leading `▁` / space
+    /// defensively in case a future backend hands us raw subwords, and we
+    /// suppress the separator when two entries are essentially time-adjacent
+    /// (gap < 5ms) AND the next token has no word-start marker — that's the
+    /// signature of a true subword continuation we should glue back together.
     static func detokenizeWords(_ words: [WordSpeakerAssignment]) -> String {
-        // Tokens emitted within this gap (in seconds) are considered subwords
-        // of the same spoken word, even if the model marked them as separate.
-        // 20ms is below typical inter-word pause (~80–150ms) and above any
-        // intra-word audio decoder jitter we've observed in Parakeet TDT.
-        let subwordGapThreshold: Double = 0.020
+        let subwordGapThreshold: Double = 0.005
         var out = ""
         var lastEnd: Double = -1
         for w in words {
             let raw = w.text
             if raw.isEmpty { continue }
+            let hasMarker = raw.hasPrefix("▁") || raw.hasPrefix(" ")
             var stripped = raw
             if stripped.hasPrefix("▁") {
                 stripped = String(stripped.dropFirst())
@@ -257,9 +279,8 @@ struct ChunkIndexer {
                 out.append(stripped)
             } else {
                 let gap = w.startSec - lastEnd
-                let hasMarker = raw.hasPrefix("▁") || raw.hasPrefix(" ")
-                let isNewWord = gap >= subwordGapThreshold && hasMarker
-                if isNewWord {
+                let isSubwordContinuation = gap < subwordGapThreshold && !hasMarker
+                if !isSubwordContinuation {
                     out.append(" ")
                 }
                 out.append(stripped)

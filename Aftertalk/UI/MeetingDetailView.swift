@@ -12,6 +12,13 @@ struct MeetingDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTab: Tab = .summary
     @State private var openAsk = false
+    /// Set by ChatThreadView's citation tap callback. Consumed by the
+    /// ScrollViewReader in `transcriptTab` to scroll the matching chunk
+    /// into view on tab switch.
+    @State private var pendingScrollChunkId: UUID? = nil
+    /// Chunk currently highlighted from a citation jump. Cleared after a
+    /// short visual pulse so the row briefly reads as "this is the source".
+    @State private var highlightedChunkId: UUID? = nil
 
     enum Tab: String, CaseIterable, Identifiable {
         case summary, transcript, actions
@@ -370,11 +377,30 @@ struct MeetingDetailView: View {
     @ViewBuilder
     private var transcriptTab: some View {
         if !chunks.isEmpty {
-            VStack(alignment: .leading, spacing: 0) {
-                QSEyebrow("Full transcript · \(chunks.count) turns", color: palette.faint)
-                    .padding(.bottom, 16)
-                ForEach(chunks) { c in
-                    transcriptRow(c)
+            ScrollViewReader { proxy in
+                VStack(alignment: .leading, spacing: 0) {
+                    QSEyebrow("Full transcript · \(chunks.count) turns", color: palette.faint)
+                        .padding(.bottom, 16)
+                    ForEach(chunks) { c in
+                        transcriptRow(c)
+                            .id(c.id)
+                    }
+                }
+                .onChange(of: pendingScrollChunkId) { _, newValue in
+                    guard let target = newValue else { return }
+                    withAnimation(.easeInOut(duration: 0.35)) {
+                        proxy.scrollTo(target, anchor: .top)
+                    }
+                    highlightedChunkId = target
+                    pendingScrollChunkId = nil
+                    Task {
+                        try? await Task.sleep(for: .seconds(1.6))
+                        await MainActor.run {
+                            if highlightedChunkId == target {
+                                highlightedChunkId = nil
+                            }
+                        }
+                    }
                 }
             }
         } else if !meeting.fullTranscript.isEmpty {
@@ -394,12 +420,13 @@ struct MeetingDetailView: View {
     }
 
     private func transcriptRow(_ c: TranscriptChunk) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let isHighlighted = highlightedChunkId == c.id
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(speakerLabel(for: c).uppercased())
                     .font(.atMono(10.5, weight: .bold))
                     .tracking(0.5)
-                    .foregroundStyle(palette.mute)
+                    .foregroundStyle(isHighlighted ? palette.accent : palette.mute)
                 Text(formatTimecode(c.startSec))
                     .font(.atMono(10, weight: .medium))
                     .tracking(0.3)
@@ -410,7 +437,15 @@ struct MeetingDetailView: View {
                 .lineSpacing(5)
                 .foregroundStyle(palette.ink)
         }
-        .padding(.bottom, 18)
+        .padding(.vertical, isHighlighted ? 12 : 9)
+        .padding(.horizontal, isHighlighted ? 12 : 0)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(palette.surface)
+                .opacity(isHighlighted ? 1 : 0)
+        )
+        .padding(.bottom, isHighlighted ? 12 : 9)
+        .animation(.easeInOut(duration: 0.25), value: isHighlighted)
     }
 
     // MARK: - Actions tab
@@ -510,7 +545,12 @@ struct MeetingDetailView: View {
                 meeting: meeting,
                 orchestrator: ctx.orchestrator,
                 questionASR: ctx.questionASR,
-                repository: ctx.repository
+                repository: ctx.repository,
+                onJumpToTranscript: { chunkId in
+                    pendingScrollChunkId = chunkId
+                    selectedTab = .transcript
+                    openAsk = false
+                }
             )
         } else {
             unavailable(
