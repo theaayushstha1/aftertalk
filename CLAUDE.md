@@ -22,8 +22,8 @@ Records a meeting on iPhone in airplane mode → streams ASR locally → generat
 | Vector store | sqlite-vec on SwiftData SQLite file | VecturaKit |
 | TTS | FluidAudio Kokoro 82M | AVSpeechSynthesizer |
 | Diarization | FluidAudio Pyannote Core ML | skip + document |
-| VAD | TEN-VAD via Sherpa-ONNX | Silero v5 |
-| Turn detection | Pipecat SmartTurnV3 (stretch) | 800ms silence timeout |
+| VAD | Silero v5 (industry-standard pick) — currently shipping energy-based gate as bridge | TEN-VAD via Sherpa-ONNX (researched, deferred to hardening sprint) |
+| Turn detection | 800ms silence timeout + energy-based barge-in (shipped) | Pipecat SmartTurnV3 (researched, deferred to hardening sprint) |
 
 ## Session workflow
 1. On session start, read in this order: `CLAUDE.md` (this file) → `PRD.md` → `ARCHITECTURE.md` → the relevant `docs/day-N-*.md` for the worktree you're in.
@@ -32,6 +32,33 @@ Records a meeting on iPhone in airplane mode → streams ASR locally → generat
 4. Before claiming a feature complete: build to a real device, run the verification checklist in the day brief, paste perf numbers into `perf/`.
 5. End of session: commit with conventional-commits prefix (`feat:`, `fix:`, `chore:`, `docs:`, `perf:`), push to the feature branch.
 6. **End of session, mandatory**: append today's progress to `~/Documents/Aftertalk/10 — Daily Logs/<today>.md` (the personal Obsidian vault, NOT an app feature). See "Obsidian vault update" below.
+
+## Device log monitoring protocol
+
+When Aayush signals he's about to test on device — phrases like **"I will test it now"**, **"testing it now"**, **"let me test"**, **"about to record"**, **"starting a recording"** — start streaming device logs in the background BEFORE he taps Record so we capture the full session.
+
+```bash
+# Start background log stream filtered for Aftertalk + FluidAudio + Moonshine.
+# `idevicesyslog` requires libimobiledevice (`brew install libimobiledevice`).
+idevicesyslog -p Aftertalk 2>&1 \
+  | grep -iE "aftertalk|fluidaudio|moonshine|diariz|kokoro|capture|asr|router|grounding|ttfsw|warm|stop#|start#|collapse" \
+  > /tmp/aftertalk-device.log &
+```
+
+Use `Bash` with `run_in_background: true`, capture the shell ID, then read `/tmp/aftertalk-device.log` after the user reports the test is done.
+
+**Honest limitation**: `idevicesyslog` reads from the legacy ASL stream, not iOS unified logging. So:
+- ✅ Captured: stdio `print()` (our `Audio capture started:` lines, `Moonshine session started` lines, `[BUILD-V3]` debug prints), and FluidAudio's `[FluidAudio.X]` formatted lines
+- ❌ NOT captured: anything emitted via Apple's `Logger` / `os_log` (our `subsystem: "com.theaayushstha.aftertalk"` calls — `Diarization`, `VM`, `QA`, `Pipeline` categories)
+
+If the test exercises a code path whose key signal lives in `Logger` output (e.g. the new `collapse:` lines in diarization post-processing), tell Aayush up front: *"I'll stream what `idevicesyslog` can catch. The `collapse:` line uses `Logger`, so if I don't see it, paste the Xcode console output and I'll work from that."*
+
+After the test:
+1. `kill <shell_id>` (or just let the background tool stop on its own)
+2. Read `/tmp/aftertalk-device.log` and analyze
+3. If the relevant signal didn't appear, ask Aayush for the Xcode console paste
+
+Don't pre-launch the stream until Aayush signals testing — running `idevicesyslog` constantly fills `/tmp` and burns battery on the phone.
 
 ## Coding conventions
 - Swift 6 strict concurrency mode. All cross-actor state passes through `@MainActor` or actor isolation.

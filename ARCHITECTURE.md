@@ -13,7 +13,7 @@ Technical reference. Read after `CLAUDE.md` and `PRD.md`. The `~/Documents/After
                                                               ▼
                                                     [Meeting record + index]
 
-[User holds button] ──► [TEN-VAD + Moonshine ASR] ──► [Question text]
+[User holds button] ──► [Energy gate + Moonshine ASR] ──► [Question text]
                                                        │
                                                        ▼
                             [Hierarchical retrieval: summary index → meeting chunk index]
@@ -41,8 +41,8 @@ Technical reference. Read after `CLAUDE.md` and `PRD.md`. The `~/Documents/After
 | Vector store | sqlite-vec on SwiftData SQLite file | Idiomatic Swift typed models, vector ops on same SQLite file, supports hierarchical scoping | VecturaKit (pure Swift) |
 | TTS (stretch) | FluidAudio Kokoro 82M | ANE-optimized, 50x real-time, ~400ms first audio, single dependency that also ships diarization | `AVSpeechSynthesizer` if Kokoro integration explodes |
 | Diarization (stretch) | FluidAudio Pyannote Core ML | Same dependency as TTS, ~80% accuracy on iPhone mic, 60x real-time | Skip + document tradeoff |
-| VAD | TEN-VAD via Sherpa-ONNX | 40-50% faster than Silero v5, ~1MB, better short-silence detection | Silero v5 |
-| EoU prediction | Pipecat SmartTurnV3 (ONNX, Sherpa) | Cuts 200-400ms perceived latency by predicting end-of-utterance from linguistic+prosodic patterns | 800ms silence timeout |
+| VAD | Silero v5 (planned) — currently energy-based gate at -32 dB / 180 ms hold | Industry-standard VAD; energy gate is the bridge that ships today, Silero v5 swap is a small wrapper change | TEN-VAD via Sherpa-ONNX (researched, deferred to hardening sprint) |
+| EoU prediction | 800ms silence timeout + hold-to-talk override | Hold-to-talk covers the demo flow; auto-EoU is not on the critical path | Pipecat SmartTurnV3 (researched, deferred to hardening sprint) |
 
 ## SwiftData data model
 
@@ -126,17 +126,17 @@ Foundation Models hard cap: 4096 tokens (input + output). On iOS 26.4+ we get `S
 
 ## VAD + turn-taking + barge-in
 
-Three layers:
+**Shipped today (Day 5):** energy-based gate at -32 dB / 180 ms hold, hold-to-talk as the only auto-interrupt mechanism. Industry-standard upgrade is **Silero v5**; **TEN-VAD + Pipecat SmartTurnV3** were researched and deferred to the hardening sprint after Nirbhay's Day 5 review (the energy gate misfires on Kokoro tail bleed past Apple's AEC and the auto-rearm path then opens a 6 s mic window that ASR happily transcribes — see `Aftertalk/QA/BargeInController.swift` and `QAOrchestrator.swift` for the canonical comments).
 
-**Layer 1 — TEN-VAD** (Tencent, 40-50% faster than Silero v5, ~1MB, ONNX via Sherpa-ONNX). Output: `isSpeaking` boolean at 30ms granularity.
+**Layer 1 — Silero v5 (planned) / energy gate (shipped)**. RMS threshold + hold time on the captured 16 kHz frames. Output: `isSpeaking` boolean.
 
-**Layer 2 — Pipecat SmartTurnV3 EoU prediction**. Transformer that predicts turn-end 200-500ms before raw silence completes. Trigger response when `VAD_p > 0.95 AND EoU_p > 0.80`.
+**Layer 2 — 800 ms silence timeout for end-of-utterance**. Pipecat SmartTurnV3 transformer (predicts turn-end 200-500ms before raw silence completes via linguistic+prosodic features) is documented as the future swap; not on the demo path.
 
-**Layer 3 — Hold-to-talk override**. User can always hold the button; release = immediate finalize. EoU is for hands-free auto mode.
+**Layer 3 — Hold-to-talk override**. User can always hold the button; release = immediate finalize. This is the only auto-interrupt mechanism in the shipped build.
 
 ### Barge-in flow (with AEC discipline)
 1. While TTS plays, mic stays armed, AEC active (Apple's voice-processing IO unit).
-2. If TEN-VAD reports speech for ≥150ms continuous AND that audio passes ASR confidence threshold:
+2. Auto barge-in is intentionally disabled in the shipped build (see `BargeInController.swift`); user taps to stop. When Silero v5 (or TEN-VAD as the deferred research option) lands and the energy gate is replaced, the flow becomes: VAD reports speech for ≥150ms continuous AND that audio passes ASR confidence threshold:
    - Hard-stop Kokoro audio via `AVAudioPlayerNode.stop()` + 50ms fade
    - Cancel in-flight Foundation Models generation (cooperative cancellation token)
    - Drop unspoken sentence buffer

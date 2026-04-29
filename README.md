@@ -20,7 +20,7 @@ End-to-end loop is live on hardware: record → on-device transcript → diarize
 | Retriever | Hierarchical 3-layer (summary → chunk → ContextPacker) | Grounding gate at cosine 0.40; 2,400-token budget |
 | Q&A | `QAOrchestrator` — retrieve → snapshot stream → sentence detector → TTS prefetch | Per-meeting + global chat threads, citations carry speaker IDs |
 | TTS | FluidAudio **Kokoro 82M ANE** (24 kHz Float32, AVAudioConverter to 48 kHz) | Lazy-warmed on first chat open to keep iPhone Air under jetsam ceiling |
-| Barge-in | Mic stays armed during TTS; tap-to-stop + auto-rearm window | TEN-VAD swap documented for Day 6 if energy heuristics regress |
+| Barge-in | Mic stays armed during TTS; tap-to-stop + auto-rearm window | Energy-based gate at -32 dB / 180 ms hold (Silero v5 is the planned VAD; TEN-VAD + SmartTurnV3 researched and deferred) |
 
 ## Architecture
 
@@ -159,11 +159,22 @@ Three layers of audit:
 git clone https://github.com/theaayushstha1/aftertalk
 cd aftertalk
 xcodegen generate
+
+# Fetch on-device model bundles BEFORE opening Xcode (gitignored, ~1.3 GB total).
+# The app never downloads at runtime — these scripts populate the bundle.
+./Scripts/fetch-parakeet-models.sh   # Parakeet TDT 0.6B v2 (post-recording ASR)
+./Scripts/fetch-kokoro-models.sh     # Kokoro 82M Core ML (neural TTS)
+./Scripts/fetch-pyannote-models.sh   # Pyannote 3.1 + WeSpeaker v2 (diarization)
+
+# Moonshine streaming weights (.ort files, ~303 MB) are also gitignored.
+# Populate Aftertalk/Models/moonshine-medium-streaming-en/ following the curl
+# loop documented in Aftertalk/Models/README.md.
+
 open Aftertalk.xcodeproj
 # Plug in iPhone, select as destination, Cmd+R.
 ```
 
-Models (Moonshine `.ort` files, ~303 MB) are gitignored; populate `Aftertalk/Models/moonshine-medium-streaming-en/` per `Aftertalk/Models/README.md`.
+If any model directory is empty at first launch the corresponding service throws a clean `modelMissing` error and the app falls through to a degraded path (e.g. AVSpeechSynthesizer instead of Kokoro). See per-folder READMEs under `Aftertalk/Models/` and `Aftertalk/Resources/Models/` for the exact file lists and CDN sources.
 
 Requirements: Xcode 17+, iOS 26+ device, Apple Developer signing.
 

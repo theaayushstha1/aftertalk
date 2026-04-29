@@ -28,7 +28,7 @@ A founder, PM, or researcher who attends 5–15 meetings/week, takes notes incon
 | S3 | Cross-meeting memory (hierarchical 3-layer RAG, global chat thread) | shipped day 5 |
 | S4 | Neural TTS (Kokoro 82M ANE-optimized) | shipped day 4 |
 | S5 | Power profile via MetricKit (30-min meeting + 10-min Q&A) | shipped day 6 |
-| S6 (bonus) | Senior-grade VAD + barge-in (TEN-VAD + SmartTurnV3 EoU) | shipped day 5 |
+| S6 (bonus) | Senior-grade VAD + barge-in | shipped energy-based barge-in (Silero v5 is the planned standard); TEN-VAD + SmartTurnV3 deferred to hardening sprint |
 | S7 (bonus) | Per-meeting + global chat threads with citations | shipped day 5 |
 
 ## 5. Non-functional requirements
