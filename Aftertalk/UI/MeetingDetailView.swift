@@ -168,24 +168,24 @@ struct MeetingDetailView: View {
         Button {
             Task { await runReprocess() }
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 if reprocessing {
-                    ProgressView().controlSize(.mini).tint(palette.mute)
+                    ProgressView().controlSize(.mini).tint(palette.bg)
                 } else {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 12, weight: .bold))
                 }
                 Text(reprocessing ? "Repairing…" : "Repair")
-                    .font(.atMono(10.5, weight: .semibold))
-                    .tracking(0.4)
+                    .font(.atMono(11.5, weight: .bold))
+                    .tracking(0.6)
+                    .textCase(.uppercase)
             }
-            .foregroundStyle(palette.mute)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            .foregroundStyle(palette.bg)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
             .background(
                 Capsule()
-                    .fill(palette.surface)
-                    .overlay(Capsule().stroke(palette.line, lineWidth: 0.5))
+                    .fill(palette.accent)
             )
         }
         .buttonStyle(.plain)
