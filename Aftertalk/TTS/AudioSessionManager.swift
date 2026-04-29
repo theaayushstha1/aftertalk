@@ -1,5 +1,7 @@
 import AVFoundation
 import Foundation
+import Observation
+import os
 
 enum AudioSessionError: Error, CustomStringConvertible {
     case configureFailed(any Error)
@@ -13,6 +15,23 @@ enum AudioSessionError: Error, CustomStringConvertible {
     }
 }
 
+/// Public observable view of audio-session interruption state. Surfaced by
+/// `AudioInterruptionObserver` so view models / UI can react without
+/// touching `AVAudioSession` themselves.
+///
+/// - `.normal` — no active interruption.
+/// - `.interrupted` — phone call / Siri / FaceTime began. Engine is paused;
+///   recording (if any) is frozen but not torn down.
+/// - `.routeChanged(reason)` — output device disappeared (AirPods unplugged,
+///   bluetooth dropout). Engine paused so we don't blast audio out the iPhone
+///   speaker mid-meeting; UI shows a banner; recording flags itself
+///   interrupted so the user knows playback / capture stopped.
+enum InterruptionState: Equatable, Sendable {
+    case normal
+    case interrupted
+    case routeChanged(reason: String)
+}
+
 actor AudioSessionManager {
     static let shared = AudioSessionManager()
 
@@ -20,7 +39,6 @@ actor AudioSessionManager {
     /// expensive setCategory + setActive dance when nothing actually changed.
     enum Mode: Equatable { case none, recording, voiceChat, voiceQuestion }
     private var mode: Mode = .none
-    private var interruptionTask: Task<Void, Never>?
 
     private init() {}
 
@@ -42,7 +60,6 @@ actor AudioSessionManager {
             throw .activateFailed(error)
         }
         mode = .recording
-        observeInterruptions()
     }
 
     /// Q&A listening mode: `.playAndRecord` + `.measurement` so the mic
@@ -77,7 +94,6 @@ actor AudioSessionManager {
             throw .activateFailed(error)
         }
         mode = .voiceQuestion
-        observeInterruptions()
     }
 
     /// Q&A speaking mode: `.playAndRecord` + `.voiceChat` so Kokoro plays the
@@ -118,7 +134,18 @@ actor AudioSessionManager {
             throw .activateFailed(error)
         }
         mode = .voiceChat
-        observeInterruptions()
+    }
+
+    /// Re-activate the session after an interruption ends + the OS asked us
+    /// to resume (`AVAudioSession.InterruptionOptions.shouldResume`). Does
+    /// not touch category/mode — those are sticky across interruptions.
+    func reactivateAfterInterruption() throws(AudioSessionError) {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+        } catch {
+            throw .activateFailed(error)
+        }
     }
 
     /// Tear down the active audio session. Default behavior **skips teardown
@@ -133,40 +160,174 @@ actor AudioSessionManager {
         let session = AVAudioSession.sharedInstance()
         try? session.setActive(false, options: .notifyOthersOnDeactivation)
         mode = .none
-        interruptionTask?.cancel()
-        interruptionTask = nil
     }
+}
 
-    private func observeInterruptions() {
-        interruptionTask?.cancel()
+/// Listens for `AVAudioSession.interruptionNotification` +
+/// `routeChangeNotification` once at startup and surfaces the result as a
+/// main-actor observable `interruptionState` so the recording VM, Q&A
+/// orchestrator, and UI can all react.
+///
+/// The observer is intentionally *not* the same actor as
+/// `AudioSessionManager`. The session manager is a serial actor because its
+/// only job is to enqueue setCategory / setActive transitions safely; the
+/// observer is a `@MainActor @Observable` so SwiftUI can read state directly
+/// and so view-model callbacks (engine pause/resume, TTS cancel, perf event)
+/// run on the main actor without manual hops at every call site.
+///
+/// Wiring (done once at app start in `AftertalkApp.init` / `.onAppear`):
+///   1. `observer.onInterruptionBegan = { [weak recording] in await recording?.handleInterruptionBegan() }`
+///   2. `observer.onInterruptionEnded = { [weak recording, weak perf] resume in ... }`
+///   3. `observer.onRouteChanged = { ... }`
+///   4. `observer.start()`
+///
+/// Why a separate type: keeping notification-center plumbing out of the
+/// audio session actor avoids re-entrancy gotchas (notification handlers
+/// can fire while the actor is mid-`setCategory`), and the observable
+/// surface plays nicely with `@Environment` if a future UI surface wants
+/// to render the banner without going through the recording VM.
+@MainActor
+@Observable
+final class AudioInterruptionObserver {
+    /// Public, observable. Drives the "interrupted" badge in the recording
+    /// surface and any future banner UI for route changes.
+    var interruptionState: InterruptionState = .normal
+
+    /// Set by the wiring code in `AftertalkApp`. Called when iOS posts
+    /// `.began` — implementations should pause the engine, persist whatever
+    /// partial state is safe to persist, and cancel TTS playback so audio
+    /// focus snaps to the caller.
+    var onInterruptionBegan: (@MainActor () async -> Void)?
+
+    /// Called when iOS posts `.ended`. The Bool indicates whether the
+    /// notification's options contained `.shouldResume` — if false, the
+    /// caller should leave the recording in `.interrupted` state and let the
+    /// user decide what to do next.
+    var onInterruptionEnded: (@MainActor (_ shouldResume: Bool) async -> Void)?
+
+    /// Called on `.oldDeviceUnavailable` (AirPods unplugged, BT dropout).
+    /// Implementations should pause the engine and surface a banner.
+    var onRouteChanged: (@MainActor (_ reason: String) async -> Void)?
+
+    private let log = Logger(subsystem: "com.theaayushstha.aftertalk", category: "AudioInterruption")
+    private var interruptionTask: Task<Void, Never>?
+    private var routeChangeTask: Task<Void, Never>?
+    private var started = false
+
+    init() {}
+
+    /// Register notification observers. Idempotent — a second call is a
+    /// no-op so `AftertalkApp.onAppear` can fire it without worrying about
+    /// scene-phase replays.
+    func start() {
+        guard !started else { return }
+        started = true
+
+        let interruptionStream = NotificationCenter.default.notifications(
+            named: AVAudioSession.interruptionNotification
+        )
         interruptionTask = Task { [weak self] in
-            let stream = NotificationCenter.default.notifications(named: AVAudioSession.interruptionNotification)
-            for await note in stream {
+            for await note in interruptionStream {
                 guard !Task.isCancelled else { return }
                 let info = note.userInfo
                 let typeRaw = info?[AVAudioSessionInterruptionTypeKey] as? UInt
                 let optionsRaw = info?[AVAudioSessionInterruptionOptionKey] as? UInt
-                await self?.handle(typeRaw: typeRaw, optionsRaw: optionsRaw)
+                // Hop to MainActor so callbacks + state mutation are all on
+                // the same isolation domain. The notification stream itself
+                // is non-isolated, so this Task @MainActor pattern is the
+                // canonical Swift 6 way to bridge.
+                await self?.handleInterruption(typeRaw: typeRaw, optionsRaw: optionsRaw)
             }
         }
+
+        let routeStream = NotificationCenter.default.notifications(
+            named: AVAudioSession.routeChangeNotification
+        )
+        routeChangeTask = Task { [weak self] in
+            for await note in routeStream {
+                guard !Task.isCancelled else { return }
+                let info = note.userInfo
+                let reasonRaw = info?[AVAudioSessionRouteChangeReasonKey] as? UInt
+                await self?.handleRouteChange(reasonRaw: reasonRaw)
+            }
+        }
+
+        log.debug("AudioInterruptionObserver started")
     }
 
-    private func handle(typeRaw: UInt?, optionsRaw: UInt?) {
+    /// Tear down observers. Mostly here for tests / hot-reload scenarios —
+    /// the production app keeps the observer alive for the entire foreground
+    /// lifetime so we don't miss interruptions during edge transitions.
+    func stop() {
+        interruptionTask?.cancel()
+        interruptionTask = nil
+        routeChangeTask?.cancel()
+        routeChangeTask = nil
+        started = false
+    }
+
+    private func handleInterruption(typeRaw: UInt?, optionsRaw: UInt?) async {
         guard let raw = typeRaw,
               let type = AVAudioSession.InterruptionType(rawValue: raw)
         else { return }
 
         switch type {
         case .began:
-            break
+            log.debug("interruption .began")
+            interruptionState = .interrupted
+            await onInterruptionBegan?()
+
         case .ended:
+            let shouldResume: Bool
             if let optionsRaw {
                 let options = AVAudioSession.InterruptionOptions(rawValue: optionsRaw)
-                if options.contains(.shouldResume) {
-                    try? AVAudioSession.sharedInstance().setActive(true)
+                shouldResume = options.contains(.shouldResume)
+            } else {
+                shouldResume = false
+            }
+            log.debug("interruption .ended shouldResume=\(shouldResume, privacy: .public)")
+            // Try to reactivate the session before the VM resumes the engine
+            // — otherwise `engine.start()` will fail on an inactive session.
+            // Best-effort: if reactivation fails (e.g. another app is still
+            // holding the route), the VM's resume will surface the error and
+            // leave us in `.interrupted` state.
+            if shouldResume {
+                do {
+                    try await AudioSessionManager.shared.reactivateAfterInterruption()
+                } catch {
+                    log.warning("session reactivate failed: \(String(describing: error), privacy: .public)")
                 }
             }
+            await onInterruptionEnded?(shouldResume)
+            // Only flip back to .normal if we actually resumed; otherwise the
+            // VM has surfaced an explicit interrupted state and we leave the
+            // observable in lockstep.
+            if shouldResume {
+                interruptionState = .normal
+            }
+
         @unknown default:
+            break
+        }
+    }
+
+    private func handleRouteChange(reasonRaw: UInt?) async {
+        guard let raw = reasonRaw,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: raw)
+        else { return }
+
+        switch reason {
+        case .oldDeviceUnavailable:
+            // The previous output device went away — AirPods unplugged,
+            // bluetooth peer disconnected, etc. Pause + banner. The user
+            // can resume manually once they've resolved the route.
+            let label = "output_device_unavailable"
+            log.debug("routeChange \(label, privacy: .public)")
+            interruptionState = .routeChanged(reason: label)
+            await onRouteChanged?(label)
+        default:
+            // Other route reasons (newDeviceAvailable, categoryChange, ...)
+            // are normal lifecycle events; we don't need to surface them.
             break
         }
     }

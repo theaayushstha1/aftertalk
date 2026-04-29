@@ -9,6 +9,12 @@ struct AftertalkApp: App {
     // consumers (deltaTask, diagTask) while the audio engine kept running.
     @State private var recording = RecordingViewModel()
     @State private var privacyMonitor = PrivacyMonitor()
+    /// Single observer for AVAudioSession interruption + route-change
+    /// notifications. Owned at app scope so it survives every TabView /
+    /// scene-phase shuffle and only registers once. Wired to `recording`
+    /// in `.onAppear`, and `RootView` plugs in the TTS cancel hook on the
+    /// QA orchestrator the moment the orchestrator is constructed.
+    @State private var interruptions = AudioInterruptionObserver()
     /// Single in-app perf sampler. Runs the entire foreground app lifetime so
     /// recording + Q&A both land in the same CSV, charted as one timeline for
     /// the Day 6 perf chart. Settings exposes a share sheet to pull the file
@@ -32,7 +38,7 @@ struct AftertalkApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView(recording: recording, perf: perf)
+            RootView(recording: recording, perf: perf, interruptions: interruptions)
                 .environment(privacyMonitor)
                 .modelContainer(container)
                 .onAppear {
@@ -40,6 +46,25 @@ struct AftertalkApp: App {
                     // Privacy monitor wiring lives here (not in RootView's
                     // .task) so it survives tab switches and only fires once.
                     recording.privacyMonitor = privacyMonitor
+                    // Wire interruption pipeline once. Begin/end/route-change
+                    // closures hop straight to the recording VM. The TTS
+                    // cancel hook is installed by RootView when the QA
+                    // orchestrator is constructed (lazy, model-container
+                    // dependent). Perf event is bridged via the actor-bound
+                    // `perf` sampler.
+                    interruptions.onInterruptionBegan = { [recording] in
+                        await recording.handleInterruptionBegan()
+                    }
+                    interruptions.onInterruptionEnded = { [recording] shouldResume in
+                        await recording.handleInterruptionEnded(shouldResume: shouldResume)
+                    }
+                    interruptions.onRouteChanged = { [recording] reason in
+                        await recording.handleRouteChanged(reason: reason)
+                    }
+                    recording.onPerfEvent = { [perf] label in
+                        await perf.record(event: label)
+                    }
+                    interruptions.start()
                     Task { await perf.start(eventLabel: "app_appear") }
                 }
                 .onChange(of: scenePhase) { _, phase in
