@@ -26,6 +26,15 @@ final class MeetingProcessingPipeline {
     private let diarization: (any DiarizationService)?
     private let chunker = ChunkIndexer()
 
+    /// Belt-and-suspenders dedupe: when `onSessionEnded` fires twice in
+    /// quick succession (tab-lifecycle bug #8), two `process(...)` calls
+    /// land here back-to-back with the *same* transcript / duration / audio
+    /// file. We hash that triple and short-circuit the second call within
+    /// a 5 s wallclock window so only one Meeting row is ever created per
+    /// session — even if RootView is re-firing onSessionEnded.
+    private var lastSessionFingerprint: (key: String, meetingId: UUID, at: Date)?
+    private static let dedupeWindowSeconds: TimeInterval = 5.0
+
     init(
         repository: MeetingsRepository,
         embeddings: any EmbeddingService,
@@ -49,6 +58,23 @@ final class MeetingProcessingPipeline {
             stage = .failed("empty transcript")
             return nil
         }
+
+        // Dedupe guard against duplicate `onSessionEnded` fires (bug #8).
+        // Stable triple of (transcript prefix, rounded duration, audio file
+        // name); if the previous call within the last 5 s produced the same
+        // key, return its meetingId without creating a second row.
+        let fingerprint = Self.fingerprint(
+            transcript: transcript,
+            durationSeconds: durationSeconds,
+            audioFileURL: audioFileURL
+        )
+        if let last = lastSessionFingerprint,
+           last.key == fingerprint,
+           Date().timeIntervalSince(last.at) < Self.dedupeWindowSeconds {
+            log.warning("dedupe: skipping duplicate process(...) call within \(Self.dedupeWindowSeconds, privacy: .public)s — returning existing meetingId")
+            return last.meetingId
+        }
+
         do {
             stage = .savingMeeting
             let initialTitle = Self.suggestedTitle(from: transcript)
@@ -58,6 +84,10 @@ final class MeetingProcessingPipeline {
                 duration: durationSeconds,
                 audioFileURL: audioFileURL
             )
+            // Stamp the fingerprint as soon as the row exists so a near-
+            // simultaneous re-fire short-circuits even if the rest of the
+            // pipeline (polish/diarize/embed) is still running.
+            lastSessionFingerprint = (fingerprint, meetingId, Date())
 
             // Streaming Moonshine output is the fallback. If the batch ASR
             // service is wired and we have a WAV to read, run a higher-quality
@@ -178,30 +208,25 @@ final class MeetingProcessingPipeline {
             } else {
                 wordAssignments = []
             }
-            var drafts = chunker.chunks(from: transcript, durationSeconds: durationSeconds)
+            // When we have word-level diarization, build chunks at speaker-
+            // turnover boundaries so back-and-forth conversation reads as
+            // distinct turns instead of being collapsed under whichever voice
+            // had majority airtime in a fixed-size window. Falls back to
+            // sentence-window chunking + dominantSpeaker stamping when word
+            // timings are unavailable (Moonshine-only path with no Parakeet
+            // polish, or polish ran but diarization didn't).
+            var drafts: [ChunkDraft]
             if !wordAssignments.isEmpty {
-                drafts = chunker.stampSpeakers(on: drafts, words: wordAssignments)
-            } else if !speakerSegments.isEmpty {
-                // No word timings (Moonshine path) but diarization ran: fall
-                // back to picking the speaker whose segment overlaps the
-                // chunk's [startSec, endSec] window the most.
-                drafts = drafts.map { d in
-                    var overlap: [String: Double] = [:]
-                    for seg in speakerSegments {
-                        let ov = max(0, min(seg.endSec, d.endSec) - max(seg.startSec, d.startSec))
-                        if ov > 0 { overlap[seg.speakerId, default: 0] += ov }
-                    }
-                    let sid = overlap.max(by: { $0.value < $1.value })?.key
-                    return ChunkDraft(
-                        orderIndex: d.orderIndex,
-                        text: d.text,
-                        startSec: d.startSec,
-                        endSec: d.endSec,
-                        speakerName: d.speakerName,
-                        speakerId: sid
-                    )
-                }
+                drafts = chunker.chunksFromWordAssignments(wordAssignments)
+            } else {
+                drafts = chunker.chunks(from: transcript, durationSeconds: durationSeconds)
             }
+            // No fallback when word-level reconciliation can't run: the
+            // prior coarse [startSec,endSec]∩segment overlap mis-attributed
+            // every chunk to "Speaker 1" because chunker timestamps are
+            // derived from sentence offsets, not real audio time. Leaving
+            // `chunk.speakerId = nil` lets the UI render the neutral "Voice"
+            // label, which is honest about what we know (bug #4).
 
             // Resolve each chunk's display name from the roster so retrieval
             // (ContextPacker reads `chunk.speakerName`) and the embed prefix
@@ -308,6 +333,24 @@ final class MeetingProcessingPipeline {
         // Hard cap so a verbose topic phrase doesn't blow the list row width.
         let clipped = joined.prefix(64)
         return clipped.count < joined.count ? String(clipped) + "…" : String(clipped)
+    }
+
+    /// Stable session fingerprint for the dedupe guard. Uses the first 256
+    /// chars of the trimmed transcript, the duration rounded to whole
+    /// seconds, and the audio file's last-path component. Two consecutive
+    /// `onSessionEnded` fires from the same recording produce identical
+    /// triples — that's all the guard needs.
+    static func fingerprint(
+        transcript: String,
+        durationSeconds: Double,
+        audioFileURL: URL?
+    ) -> String {
+        let head = transcript
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .prefix(256)
+        let secs = Int(durationSeconds.rounded())
+        let file = audioFileURL?.lastPathComponent ?? "—"
+        return "\(file)|\(secs)|\(head)"
     }
 
     static func suggestedTitle(from transcript: String) -> String {
