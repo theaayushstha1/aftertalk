@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Aftertalk · Days 4–5</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  @page {
+    size: letter;
+    margin: 0.32in 0.55in;
+    background: #FAF8F4;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    background: #FAF8F4;
+    color: #2A2A2A;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 8.5pt;
+    line-height: 1.4;
+    font-weight: 400;
+    letter-spacing: 0.005em;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: inherit; text-decoration: none; }
+
+  .sha {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7pt;
+    letter-spacing: 0;
+    color: #6B5A3F;
+    background: #F0EAD9;
+    padding: 1pt 4pt;
+    border-radius: 2pt;
+    border: 0.3pt solid #DDD3BC;
+    text-decoration: none;
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-bottom: 5pt;
+    border-bottom: 0.4pt solid #D8D2C7;
+    margin-bottom: 8pt;
+  }
+  .brand {
+    font-family: 'Fraunces', serif;
+    font-size: 18pt;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    color: #1A1A1A;
+  }
+  .brand-meta { text-align: right; }
+  .brand-meta .top {
+    font-size: 7pt;
+    color: #7A7268;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  .brand-meta .repo {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7pt;
+    color: #6B5A3F;
+    margin-top: 2pt;
+    letter-spacing: 0;
+    border-bottom: 0.3pt solid #C4A77D;
+    padding-bottom: 0.3pt;
+  }
+
+  .velocity-row {
+    display: flex;
+    align-items: center;
+    gap: 8pt;
+    margin-bottom: 5pt;
+  }
+  .velocity-pill {
+    display: inline-block;
+    font-family: 'Inter', sans-serif;
+    font-size: 6.5pt;
+    font-weight: 700;
+    color: #3F5E3D;
+    background: #E5EDDC;
+    padding: 2pt 5pt;
+    border-radius: 8pt;
+    border: 0.4pt solid #C2D3B0;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .title-block {
+    margin-bottom: 7pt;
+    padding-left: 9pt;
+    border-left: 1.4pt solid #C4A77D;
+  }
+  .eyebrow {
+    font-size: 7pt;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: #8A7F71;
+    font-weight: 600;
+    margin-bottom: 4pt;
+  }
+  .title {
+    font-family: 'Fraunces', serif;
+    font-size: 17pt;
+    font-weight: 400;
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+    color: #1A1A1A;
+    margin-bottom: 5pt;
+  }
+  .title em {
+    font-style: italic;
+    color: #5C5346;
+  }
+  .lede {
+    font-size: 9pt;
+    color: #4A4438;
+    line-height: 1.4;
+    max-width: 96%;
+  }
+
+  /* --- Body sections --- */
+  section { margin-bottom: 6pt; }
+
+  h2 {
+    font-family: 'Fraunces', serif;
+    font-size: 11pt;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: #1A1A1A;
+    margin-bottom: 3pt;
+  }
+  h2 .h2-meta {
+    font-family: 'Inter', sans-serif;
+    font-size: 7pt;
+    color: #8A7F71;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 500;
+    margin-left: 6pt;
+  }
+
+  .day-grid {
+    display: grid;
+    grid-template-columns: 68pt 1fr 95pt;
+    column-gap: 11pt;
+    row-gap: 5pt;
+    margin-top: 3pt;
+    align-items: start;
+  }
+  .day-tag {
+    font-family: 'Fraunces', serif;
+    font-size: 10pt;
+    font-weight: 500;
+    color: #5C5346;
+    letter-spacing: 0.01em;
+    padding-top: 0.5pt;
+  }
+  .day-tag span {
+    display: block;
+    font-family: 'Inter', sans-serif;
+    font-size: 6.8pt;
+    color: #8A7F71;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-top: 1pt;
+    font-weight: 500;
+  }
+  .day-body {
+    font-size: 9pt;
+    color: #2C2C2C;
+    line-height: 1.45;
+  }
+  .day-body strong { font-weight: 600; color: #1A1A1A; }
+  .day-shas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3pt;
+    padding-top: 1pt;
+  }
+
+  /* --- Two-column choices block --- */
+  .choices {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10pt;
+    margin-top: 4pt;
+  }
+  .choice {
+    border: 0.4pt solid #D8D2C7;
+    border-radius: 3pt;
+    padding: 6pt 8pt;
+    background: #F5F1EA;
+  }
+  .choice-label {
+    font-size: 6.8pt;
+    color: #8A7F71;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+    margin-bottom: 3pt;
+  }
+  .choice-title {
+    font-family: 'Fraunces', serif;
+    font-size: 10pt;
+    font-weight: 500;
+    color: #1A1A1A;
+    letter-spacing: -0.01em;
+    margin-bottom: 3pt;
+  }
+  .choice-body {
+    font-size: 8.3pt;
+    color: #3A3530;
+    line-height: 1.4;
+  }
+  .choice-body strong { color: #1A1A1A; font-weight: 600; }
+
+  /* --- UI gallery --- */
+  .gallery {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 7pt;
+    margin-top: 5pt;
+  }
+  .shot {
+    border: 0.4pt solid #D8D2C7;
+    border-radius: 3pt;
+    overflow: hidden;
+    background: #FFFFFF;
+    box-shadow: 0 0.5pt 1.5pt rgba(0,0,0,0.05);
+  }
+  .shot img {
+    width: 100%;
+    height: 88pt;
+    object-fit: cover;
+    object-position: top;
+    display: block;
+  }
+  .shot-caption {
+    font-size: 6.3pt;
+    color: #5C5346;
+    padding: 2pt 4pt 3pt;
+    text-align: center;
+    letter-spacing: 0.02em;
+    border-top: 0.3pt solid #ECE6D6;
+    background: #FBF8F1;
+    line-height: 1.2;
+    min-height: 17pt;
+  }
+  .shot-caption strong {
+    display: block;
+    color: #1A1A1A;
+    font-weight: 600;
+    font-size: 7pt;
+    margin-bottom: 0.5pt;
+  }
+
+  /* --- Metrics row --- */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 7pt;
+    margin: 4pt 0 0 0;
+  }
+  .metric {
+    border: 0.4pt solid #D8D2C7;
+    border-radius: 3pt;
+    padding: 6pt 7pt;
+    background: #F5F1EA;
+  }
+  .metric-num {
+    font-family: 'Fraunces', serif;
+    font-size: 14pt;
+    font-weight: 500;
+    color: #1A1A1A;
+    letter-spacing: -0.025em;
+    line-height: 1;
+    margin-bottom: 2pt;
+  }
+  .metric-num small {
+    font-size: 7.5pt;
+    color: #7A7268;
+    margin-left: 1pt;
+    font-weight: 400;
+    letter-spacing: 0;
+  }
+  .metric-label {
+    font-size: 6.5pt;
+    color: #5C5346;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+  }
+
+  /* --- Footer --- */
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-top: 5pt;
+    margin-top: 4pt;
+    border-top: 0.4pt solid #D8D2C7;
+    font-size: 7pt;
+    color: #7A7268;
+    letter-spacing: 0.02em;
+  }
+  .footer strong { color: #5C5346; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="brand">Aftertalk</div>
+  <div class="brand-meta">
+    <div class="top">Build Brief · April 28, 2026 · Days 4–5</div>
+    <a class="repo" href="https://github.com/theaayushstha1/aftertalk">github.com/theaayushstha1/aftertalk</a>
+  </div>
+</div>
+
+<div class="title-block">
+  <div class="velocity-row">
+    <span class="eyebrow" style="margin-bottom:0">Days 4–5 of 7</span>
+    <span class="velocity-pill">5 of 7 stretches shipped · 2 days to deadline</span>
+  </div>
+  <h1 class="title">A neural voice, who said what, and a <em>quiet, editorial interface</em>.</h1>
+  <p class="lede">Days 4 and 5 took the working voice loop and made it feel like a product. The phone now answers in a real human voice — not the system synthesizer — and labels who said what during the meeting. The interface was rebuilt around an editorial typography system, and a new Settings tab proves the privacy claim by reading live device state.</p>
+</div>
+
+<section>
+  <h2>What shipped <span class="h2-meta">commit hashes link to GitHub</span></h2>
+  <div class="day-grid">
+
+    <div class="day-tag">Day 4<span>Voice + speakers</span></div>
+    <div class="day-body"><strong>Neural TTS and speaker diarization, both on-device.</strong> Swapped the placeholder system voice for <strong>FluidAudio Kokoro 82M</strong> running on the Neural Engine, with a sentence-boundary streamer that starts speaking before the LLM finishes generating. Wired <strong>Pyannote 3.1 + WeSpeaker v2</strong> in parallel with a Parakeet polish pass; the summary now attributes decisions and action items to specific speakers. iPhone Air stays under the jetsam ceiling via lazy-warm.</div>
+    <div class="day-shas">
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/6bee46d">6bee46d</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/079e7d0">079e7d0</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/8b594af">8b594af</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/3e63bee">3e63bee</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/db56dbc">db56dbc</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/c718264">c718264</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/fd81f51">fd81f51</a>
+    </div>
+
+    <div class="day-tag">Day 5<span>Quiet Studio + Settings</span></div>
+    <div class="day-body"><strong>Editorial UI refactor + cross-meeting memory wired to the surface + a privacy audit you can read.</strong> Every screen rebuilt against shared primitives (eyebrow, title, body, privacy badge, breathing orb, immersive waveform) with a warm light/dark palette. Global Ask routes through the hierarchical retriever; citations carry meeting title across meetings, timestamp within. Settings reads live <code>@Query</code> counts, probes model bundles via <code>FileManager</code>, watches <code>NWPathMonitor</code>, and exposes a Verify button — nothing on that screen is cached or hand-waved. First on-device install surfaced five UI bugs; all five patched the same evening.</div>
+    <div class="day-shas">
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/d1f7be5">d1f7be5</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/3e096af">3e096af</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/45a696f">45a696f</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/73f59db">73f59db</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/ebf82d1">ebf82d1</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/e87387b">e87387b</a>
+      <a class="sha" href="https://github.com/theaayushstha1/aftertalk/commit/2448ef3">2448ef3</a>
+    </div>
+
+  </div>
+</section>
+
+<section>
+  <h2>The interface</h2>
+  <div class="gallery">
+    <div class="shot">
+      <img src="assets/meetings-list.png" alt="Meetings list">
+      <div class="shot-caption"><strong>Meetings</strong>Today / yesterday / earlier groups</div>
+    </div>
+    <div class="shot">
+      <img src="assets/ask-citations.png" alt="Ask with citations">
+      <div class="shot-caption"><strong>Ask · per-meeting</strong>Answers carry citation pills</div>
+    </div>
+    <div class="shot">
+      <img src="assets/ask-followup.png" alt="Ask follow-up">
+      <div class="shot-caption"><strong>Ask · follow-up</strong>Multi-turn voice thread</div>
+    </div>
+    <div class="shot">
+      <img src="assets/global-ask.png" alt="Global Ask">
+      <div class="shot-caption"><strong>Global Ask</strong>Across every meeting</div>
+    </div>
+    <div class="shot">
+      <img src="assets/settings-privacy.png" alt="Settings privacy audit">
+      <div class="shot-caption"><strong>Settings</strong>Live privacy audit + Verify</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Two choices that mattered</h2>
+  <div class="choices">
+    <div class="choice">
+      <div class="choice-label">Decision · Day 4</div>
+      <div class="choice-title">Sentence-boundary streaming over chunked TTS</div>
+      <div class="choice-body">The LLM emits tokens in &lt;33ms, but Kokoro wants whole sentences for natural prosody. Built a <strong>SentenceBoundaryDetector</strong> that consumes the snapshot stream and hands completed sentences to a <strong>TTSWorker</strong> actor. Sentence N+1 inference prefetches while sentence N plays. Result: first spoken word in <strong>104 ms</strong> while the rest of the answer is still being generated.</div>
+    </div>
+    <div class="choice">
+      <div class="choice-label">Decision · Day 5</div>
+      <div class="choice-title">Settings reads only real device state</div>
+      <div class="choice-body">Privacy is the entire pitch, so the audit screen had to be auditable. Every row pulls live state per render — <code>@Query</code> for meeting and chunk counts, <code>FileManager</code> probes via <code>ModelLocator</code> for bundle integrity, <code>PrivacyMonitor.state</code> for the network row. The <strong>Verify</strong> button runs an actual probe sequence, not a hardcoded green check. Recorded in <strong>ADR-016</strong>.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>The numbers (held from the on-device run)</h2>
+  <div class="metrics">
+    <div class="metric">
+      <div class="metric-num">104<small>ms</small></div>
+      <div class="metric-label">First spoken word</div>
+    </div>
+    <div class="metric">
+      <div class="metric-num">1.44<small>s</small></div>
+      <div class="metric-label">Full Q&amp;A turn</div>
+    </div>
+    <div class="metric">
+      <div class="metric-num">5/7</div>
+      <div class="metric-label">Stretch goals shipped</div>
+    </div>
+    <div class="metric">
+      <div class="metric-num">82<small>m</small></div>
+      <div class="metric-label">Kokoro params on ANE</div>
+    </div>
+    <div class="metric">
+      <div class="metric-num">0</div>
+      <div class="metric-label">Network requests</div>
+    </div>
+  </div>
+</section>
+
+<div class="footer">
+  <div><strong>Aftertalk</strong> · A personal experiment in fully on-device meeting intelligence</div>
+  <div>Day 6 next: custom QS tab bar · MetricKit profiling · v0.9.0-rc1</div>
+</div>
+
+</body>
+</html>
