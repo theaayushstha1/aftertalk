@@ -400,6 +400,7 @@ final class FoundationModelsSummaryGenerator: LLMService, @unchecked Sendable {
             return ActionItem(description: desc, owner: owner)
         }
         return MeetingSummary(
+            title: (partial.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
             decisions: partial.decisions ?? [],
             actionItems: actions,
             topics: partial.topics ?? [],
@@ -466,7 +467,16 @@ final class FoundationModelsSummaryGenerator: LLMService, @unchecked Sendable {
         }
 
         let mergedActions = actionOrder.compactMap { actionsByKey[$0] }.prefix(20)
+        // Pick the first non-empty title across windows. Windows share the
+        // meeting subject, and the first window — covering the meeting's
+        // opening minutes — almost always carries the framing the speakers
+        // use to introduce the topic. Sanitization happens downstream at
+        // the persistence boundary.
+        let mergedTitle = partials
+            .map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty }) ?? ""
         let merged = MeetingSummary(
+            title: mergedTitle,
             decisions: Array(decisions.values.prefix(15)),
             actionItems: Array(mergedActions),
             topics: Array(topics.values.prefix(12)),
