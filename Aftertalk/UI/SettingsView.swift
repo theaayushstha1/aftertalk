@@ -318,18 +318,20 @@ private struct AuditRow: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
-                    .font(.atBody(13.5, weight: .medium))
-                    .foregroundStyle(palette.ink)
+                    .font(.atBody(14.5, weight: .semibold))
+                    .foregroundColor(Color(red: 0.12, green: 0.10, blue: 0.08))
                 Text(sub)
                     .font(.atBody(11.5, weight: .regular))
-                    .foregroundStyle(palette.faint)
+                    .foregroundColor(Color(red: 0.52, green: 0.47, blue: 0.38))
             }
             Spacer()
             Text(value)
                 .font(.atMono(18, weight: .semibold))
                 .tracking(-0.3)
                 .monospacedDigit()
-                .foregroundStyle(valueIsZero ? palette.positive : palette.ink)
+                .foregroundColor(valueIsZero
+                    ? Color(red: 0.25, green: 0.53, blue: 0.32)
+                    : Color(red: 0.12, green: 0.10, blue: 0.08))
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)

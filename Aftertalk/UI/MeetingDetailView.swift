@@ -56,8 +56,13 @@ struct MeetingDetailView: View {
             }
         }
         .navigationBarHidden(true)
-        .navigationDestination(isPresented: $openAsk) {
-            askDestination
+        .fullScreenCover(isPresented: $openAsk) {
+            // fullScreenCover sidesteps the SwiftUI quirk where two
+            // .navigationDestination modifiers on the same NavigationStack
+            // (the parent's `for: UUID.self` plus this isPresented one)
+            // race and the second never fires. The Q&A loop wants the whole
+            // viewport anyway.
+            NavigationStack { askDestination }
         }
         .onDisappear {
             // Real teardown: when the user pops back to the meetings list,

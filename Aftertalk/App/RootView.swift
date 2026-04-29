@@ -8,7 +8,7 @@ struct RootView: View {
     @State private var recording = RecordingViewModel()
     @State private var pipeline: MeetingProcessingPipeline?
     @State private var qa: QAContext?
-    @State private var debugVisible = true
+    @State private var debugVisible = false
 
     var body: some View {
         TabView {

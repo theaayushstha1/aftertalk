@@ -586,12 +586,13 @@ private struct MessageBlock: View {
             VStack(alignment: .leading, spacing: 8) {
                 QSEyebrow("Asked", color: palette.faint)
                 Text("\u{201C}\(message.text)\u{201D}")
-                    .font(.atSerif(19, weight: .regular))
+                    .font(.atSerif(19, weight: .medium))
                     .italic()
                     .lineSpacing(4)
-                    .foregroundStyle(palette.ink)
+                    .foregroundColor(palette.ink)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .foregroundColor(palette.ink)
         } else {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 8) {

@@ -337,8 +337,13 @@ private struct MeetingRow: View {
                 if !isFirst { QSDivider() }
             }
             .contentShape(Rectangle())
+            // NavigationLink inherits the parent's `.tint(palette.accent)` and
+            // tries to recolor every Text inside. Force palette.ink so titles
+            // and metadata stay legible.
+            .foregroundStyle(palette.ink)
         }
         .buttonStyle(.plain)
+        .tint(palette.ink)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive, action: onDelete) {
                 Label("Delete", systemImage: "trash")
@@ -355,13 +360,13 @@ private struct MeetingRow: View {
             Text(meeting.title)
                 .font(.atDisplay(17, weight: .semibold))
                 .tracking(-0.3)
-                .foregroundStyle(palette.ink)
+                .foregroundColor(Color(red: 0.12, green: 0.10, blue: 0.08))
                 .lineLimit(2)
             Spacer(minLength: 8)
             Text(timeText)
                 .font(.atMono(11, weight: .medium))
                 .monospacedDigit()
-                .foregroundStyle(palette.faint)
+                .foregroundColor(Color(red: 0.52, green: 0.47, blue: 0.38))
         }
     }
 
