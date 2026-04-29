@@ -9,7 +9,33 @@ struct MeetingsListView: View {
     let qaContext: QAContext?
     @Environment(\.atPalette) private var palette
     @Environment(PrivacyMonitor.self) private var privacy
-    @Query(sort: \Meeting.recordedAt, order: .reverse) private var meetings: [Meeting]
+    @Query(sort: \Meeting.recordedAt, order: .reverse) private var rawMeetings: [Meeting]
+
+    /// Deduped view of `rawMeetings`. The pipeline's in-memory dedupe guard
+    /// only short-circuits within a 5 s window; if `onSessionEnded` re-fires
+    /// later (tab-lifecycle bug, app re-foreground while a session reference
+    /// is still live), two rows end up in SwiftData with identical content.
+    /// Collapse them in the view by `(rounded recordedAt minute,
+    /// rounded duration second, normalized title)` so the list stays clean
+    /// for the demo. Earliest row wins so we keep the original UUID anything
+    /// downstream might already reference.
+    private var meetings: [Meeting] {
+        var seen = Set<String>()
+        var out: [Meeting] = []
+        out.reserveCapacity(rawMeetings.count)
+        for m in rawMeetings {
+            let minute = Int(m.recordedAt.timeIntervalSinceReferenceDate / 60)
+            let secs = Int(m.durationSeconds.rounded())
+            let title = m.title
+                .lowercased()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = "\(minute)|\(secs)|\(title)"
+            if seen.insert(key).inserted {
+                out.append(m)
+            }
+        }
+        return out
+    }
 
     @State private var renameTarget: Meeting?
     @State private var renameDraft = ""
