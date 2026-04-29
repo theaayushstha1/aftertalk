@@ -77,7 +77,16 @@ final class MeetingProcessingPipeline {
 
         do {
             stage = .savingMeeting
-            let initialTitle = Self.suggestedTitle(from: transcript)
+            // Initial title is the streaming-transcript fragment, sanitized so
+            // a filler-leading first sentence doesn't briefly show up in the
+            // meetings list before the LLM summary lands a real title. The
+            // sanitizer falls through to `Recording · <date>` for empty /
+            // short / filler-only transcripts (10s test recordings).
+            let initialTitle = MeetingTitleSanitizer.sanitize(
+                Self.suggestedTitle(from: transcript),
+                transcript: transcript,
+                fallbackDate: Date()
+            )
             let meetingId = try await repository.createMeeting(
                 title: initialTitle,
                 transcript: transcript,
@@ -171,7 +180,16 @@ final class MeetingProcessingPipeline {
                     let polishedText = polished.text.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !polishedText.isEmpty {
                         workingTranscript = polishedText
-                        workingTitle = Self.suggestedTitle(from: polishedText)
+                        // Polished-transcript path used to call `suggestedTitle` which
+                        // takes the first 60 chars of speech — a near-guaranteed
+                        // filler leak ("Yeah and uh so basically what we…"). Route
+                        // through the sanitizer so this intermediate title also
+                        // can't poison the list while the LLM summary is in flight.
+                        workingTitle = MeetingTitleSanitizer.sanitize(
+                            Self.suggestedTitle(from: polishedText),
+                            transcript: polishedText,
+                            fallbackDate: Date()
+                        )
                         try await repository.updateTranscript(meetingId: meetingId, transcript: polishedText)
                         if workingTitle != initialTitle {
                             try? await repository.renameMeeting(meetingId, to: workingTitle)
@@ -287,18 +305,28 @@ final class MeetingProcessingPipeline {
             let latency = result.latencyMillis
             try await repository.attachSummary(to: meetingId, summary: result.summary, latencyMillis: latency)
 
-            // Promote the LLM's structured topics into a real title. Until now
-            // `workingTitle` was a transcript fragment (literally the first 60
-            // chars of speech), which produced gems like "Wonderful," and "Of
-            // the physical, the common sense, the a" in the meeting list. The
-            // summary's `topics` field is already 2-4 short noun phrases ranked
-            // by prominence — exactly what a human title would be. Skip the
-            // upgrade if the user manually renamed before summary landed (rare
-            // but possible on long meetings with fast taps).
-            let topicTitle = Self.title(fromTopics: result.summary.topics)
-            if let topicTitle, topicTitle != workingTitle {
-                try? await repository.renameMeeting(meetingId, to: topicTitle)
-                workingTitle = topicTitle
+            // Promote the LLM's @Generable title into the persisted title,
+            // routing it through `MeetingTitleSanitizer` so an FM glitch
+            // (filler-prefixed title, leaked transcript sentence, empty
+            // string on a 10s recording) never reaches `Meeting.title`.
+            // Sanitizer ladder: accept the FM title if it passes the
+            // noun-phrase / word-count / no-filler checks, else mine a
+            // salient noun from the transcript via NLTagger, else fall
+            // back to "Recording · Apr 29". `topics` is the secondary
+            // candidate so a meeting whose FM title field went empty but
+            // whose topics list is solid still gets a reasonable label.
+            let recordedAt = Date()
+            let candidateFromFM = result.summary.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let candidateFromTopics = Self.title(fromTopics: result.summary.topics) ?? ""
+            let rawCandidate = !candidateFromFM.isEmpty ? candidateFromFM : candidateFromTopics
+            let promotedTitle = MeetingTitleSanitizer.sanitize(
+                rawCandidate,
+                transcript: transcript,
+                fallbackDate: recordedAt
+            )
+            if promotedTitle != workingTitle {
+                try? await repository.renameMeeting(meetingId, to: promotedTitle)
+                workingTitle = promotedTitle
             }
 
             // Meeting-level embedding now uses the structured summary fields

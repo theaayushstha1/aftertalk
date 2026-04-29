@@ -62,6 +62,7 @@
 		ED479A8179B605CA8725F168 /* MoonshineVoice in Frameworks */ = {isa = PBXBuildFile; productRef = 58A06F94C73C33F95A02D67F /* MoonshineVoice */; };
 		FB6582F6CBFAC7698F098696 /* RecordingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F7F2DD575356414495ABE23 /* RecordingViewModel.swift */; };
 		AA01000000000000000DS001 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01000000000000000DS002 /* DesignSystem.swift */; };
+		AA02000000000000000TS001 /* MeetingTitleSanitizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA02000000000000000TS002 /* MeetingTitleSanitizer.swift */; };
 		AA01000000000000000QS001 /* QSComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01000000000000000QS002 /* QSComponents.swift */; };
 		AA01000000000000000SV001 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01000000000000000SV002 /* SearchView.swift */; };
 		AA01000000000000000PV001 /* ProcessingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01000000000000000PV002 /* ProcessingView.swift */; };
@@ -126,6 +127,7 @@
 		F05E02C550A2CE27398F6A16 /* TTSWorker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TTSWorker.swift; sourceTree = "<group>"; };
 		FE18D6230E577B09F1E13F8B /* DiarizationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiarizationService.swift; sourceTree = "<group>"; };
 		AA01000000000000000DS002 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		AA02000000000000000TS002 /* MeetingTitleSanitizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingTitleSanitizer.swift; sourceTree = "<group>"; };
 		AA01000000000000000QS002 /* QSComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QSComponents.swift; sourceTree = "<group>"; };
 		AA01000000000000000SV002 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		AA01000000000000000PV002 /* ProcessingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingView.swift; sourceTree = "<group>"; };
@@ -257,6 +259,7 @@
 				A25350B42E969CA49D84CC16 /* DiarizationReconciler.swift */,
 				207DC58B8313D5E917FC61DD /* MeetingProcessingPipeline.swift */,
 				4F88D7B327555BB7CD4DC1F1 /* MeetingSummary.swift */,
+				AA02000000000000000TS002 /* MeetingTitleSanitizer.swift */,
 				96FD391B1C081F34FA027701 /* SummaryGenerator.swift */,
 			);
 			path = Summary;
@@ -436,6 +439,7 @@
 				7036F5A3AAE2FAD466CB6F75 /* MeetingDetailView.swift in Sources */,
 				1B574DF9C5EB6487440F8193 /* MeetingProcessingPipeline.swift in Sources */,
 				BC77B2DE083E912F3AE8F83F /* MeetingSummary.swift in Sources */,
+				AA02000000000000000TS001 /* MeetingTitleSanitizer.swift in Sources */,
 				A60009ABAB0A6E5608A35A9D /* MeetingSummaryEmbedding.swift in Sources */,
 				8A70F978DD4445F2FDBB1463 /* MeetingSummaryRecord.swift in Sources */,
 				34114B893F140710EA8BE803 /* MeetingsListView.swift in Sources */,
