@@ -222,44 +222,37 @@
   }
   .choice-body strong { color: #1A1A1A; font-weight: 600; }
 
-  /* --- UI gallery --- */
+  /* --- UI gallery (Quiet Studio design boards) --- */
   .gallery {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 7pt;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8pt;
     margin-top: 5pt;
   }
-  .shot {
+  .gallery img {
     border: 0.4pt solid #D8D2C7;
-    border-radius: 3pt;
-    overflow: hidden;
+    border-radius: 2pt;
     background: #FFFFFF;
-    box-shadow: 0 0.5pt 1.5pt rgba(0,0,0,0.05);
-  }
-  .shot img {
-    width: 100%;
-    height: 88pt;
-    object-fit: cover;
-    object-position: top;
+    box-shadow: 0 0.5pt 1.5pt rgba(0,0,0,0.04);
     display: block;
   }
-  .shot-caption {
-    font-size: 6.3pt;
-    color: #5C5346;
-    padding: 2pt 4pt 3pt;
+  .strip-img {
+    height: 64pt;
+    width: auto;
+  }
+  .phone-img {
+    height: 110pt;
+    width: auto;
+  }
+  .gallery-caption {
+    margin-top: 4pt;
     text-align: center;
-    letter-spacing: 0.02em;
-    border-top: 0.3pt solid #ECE6D6;
-    background: #FBF8F1;
-    line-height: 1.2;
-    min-height: 17pt;
-  }
-  .shot-caption strong {
-    display: block;
-    color: #1A1A1A;
-    font-weight: 600;
     font-size: 7pt;
-    margin-bottom: 0.5pt;
+    color: #8A7F71;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 500;
   }
 
   /* --- Metrics row --- */
@@ -365,29 +358,13 @@
 </section>
 
 <section>
-  <h2>The interface</h2>
+  <h2>The Quiet Studio interface <span class="h2-meta">14 screens, one editorial system</span></h2>
   <div class="gallery">
-    <div class="shot">
-      <img src="assets/meetings-list.png" alt="Meetings list">
-      <div class="shot-caption"><strong>Meetings</strong>Today / yesterday / earlier groups</div>
-    </div>
-    <div class="shot">
-      <img src="assets/ask-citations.png" alt="Ask with citations">
-      <div class="shot-caption"><strong>Ask · per-meeting</strong>Answers carry citation pills</div>
-    </div>
-    <div class="shot">
-      <img src="assets/ask-followup.png" alt="Ask follow-up">
-      <div class="shot-caption"><strong>Ask · follow-up</strong>Multi-turn voice thread</div>
-    </div>
-    <div class="shot">
-      <img src="assets/global-ask.png" alt="Global Ask">
-      <div class="shot-caption"><strong>Global Ask</strong>Across every meeting</div>
-    </div>
-    <div class="shot">
-      <img src="assets/settings-privacy.png" alt="Settings privacy audit">
-      <div class="shot-caption"><strong>Settings</strong>Live privacy audit + Verify</div>
-    </div>
+    <img class="strip-img" src="assets/qs-flow-onboarding-record.png" alt="Onboarding · Meetings · Recording · Processing">
+    <img class="strip-img" src="assets/qs-flow-detail-ask.png" alt="Detail Summary · Transcript · Actions · Ask">
+    <img class="phone-img" src="assets/qs-settings-detail.png" alt="Settings privacy audit detail">
   </div>
+  <div class="gallery-caption">Onboarding · Capture · Processing · Detail · Ask · Settings</div>
 </section>
 
 <section>

@@ -121,13 +121,15 @@ classDiagram
 
 ## UI gallery
 
-| Meetings (today) | Settings (live audit) | Ask (across meetings) |
-|---|---|---|
-| ![Meetings list — editorial layout, today / yesterday / earlier buckets, captured-on-record-fresh stat card, search affordance](docs/assets/meetings-list.png) | ![Settings — privacy manifesto with faint-zero backdrop, live audit pulling real `@Query` counts and `PrivacyMonitor.state`, model inventory probed via `ModelLocator`, Verify button state machine](docs/assets/settings-privacy.png) | ![Global Ask — cross-meeting chat thread with citations carrying meeting title and timestamps; "I don't have that across your meetings yet" grounding-gate response visible](docs/assets/global-ask.png) |
+The Quiet Studio design system — 14 screens against shared `QSEyebrow / QSTitle / QSBody / QSPrivacyBadge / QSPrimaryButton / QSDivider / BreathingOrb / ImmersiveWaveform` primitives, light + dark palette, `\.atPalette` env-key.
 
-| Ask — citation pills | Ask — follow-up turns |
-|---|---|
-| ![Per-meeting answer with citations rendered as pill chips, replay affordance, TTFSW + total-turn perf badge](docs/assets/ask-citations.png) | ![Multi-turn follow-up flow with the previous answer scrolled into context and a fresh question on the way](docs/assets/ask-followup.png) |
+![Onboarding · Meetings · Recording · Processing — the capture flow](docs/assets/qs-flow-onboarding-record.png)
+
+![Detail Summary · Transcript · Actions · Ask — the after-meeting flow](docs/assets/qs-flow-detail-ask.png)
+
+<p align="center">
+  <img src="docs/assets/qs-settings-detail.png" alt="Settings — Privacy as policy. Live audit with real device state." width="320">
+</p>
 
 ## Day-by-day shipped
 
