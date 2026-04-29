@@ -175,8 +175,8 @@ final class QAOrchestrator {
         // (especially on speaker output), and the auto-rearm path then opens
         // a 6 s mic window that ASR happily transcribes — feeding garbage
         // back as the user's "next question." We're keeping hold-to-talk as
-        // the only interrupt mechanism until we wire TEN-VAD + SmartTurnV3
-        // (Day 5 stretch deferred). The BargeInController + onAutoRearm
+        // the only interrupt mechanism (TEN-VAD + SmartTurnV3 deferred; see
+        // BargeInController.swift). The BargeInController + onAutoRearm
         // plumbing stays so swapping back is a one-line change.
         log.debug("armBargeIn no-op (energy gate disabled, hold-to-talk only)")
     }
@@ -457,6 +457,40 @@ final class QAOrchestrator {
         didBargeIn = false
         let totalStart = ContinuousClock.now
 
+        // Metadata router: trivial questions about the meeting roster ("how
+        // many meetings", "list my meetings", "most recent meeting") never
+        // match in chunk-embedding space — the gate below fires and we'd say
+        // "I don't have that across your meetings yet" even though we
+        // trivially do. Intercept those before retrieval and answer from the
+        // SwiftData header roster directly. Non-metadata questions fall
+        // through unchanged so the grounding gate still protects everything
+        // else.
+        do {
+            let allHeaders = try await repository.allMeetingHeaders()
+            if let metaAnswer = Self.answerMetadataQuestion(trimmed, headers: allHeaders) {
+                log.info("global metadata router hit: q=\"\(trimmed.prefix(40), privacy: .public)\" meetings=\(allHeaders.count, privacy: .public)")
+                stage = .speaking
+                liveAnswer = metaAnswer
+                await enterSpeakingSession()
+                armBargeIn()
+                await tts.speak(metaAnswer)
+                bargeIn.stop()
+                let elapsed = totalStart.duration(to: .now).aftertalkMillis
+                liveAnswer = ""
+                stage = .idle
+                return QAResult(
+                    question: trimmed,
+                    answer: metaAnswer,
+                    citations: [],
+                    groundedByLLM: false,
+                    ttfswMillis: nil,
+                    totalMillis: elapsed
+                )
+            }
+        } catch {
+            log.warning("metadata router header fetch failed: \(String(describing: error), privacy: .public) — falling through to retrieval")
+        }
+
         let retrieval: RetrievalResult
         do {
             // scopedToMeeting=nil ⇒ HierarchicalRetriever fires Layer 1
@@ -628,6 +662,42 @@ final class QAOrchestrator {
         case .unavailable(let reason): throw QAError.modelUnavailable("\(reason)")
         @unknown default: throw QAError.modelUnavailable("unknown")
         }
+    }
+
+    /// Lightweight intent classifier for the global ask path. Catches the
+    /// three classes of "ask the database, not the LLM" questions:
+    ///
+    /// - Count: "how many meetings", "number of meetings", "count of meetings"
+    /// - List:  "list my meetings", "what meetings do I have", "show all meetings"
+    /// - Recent:"most recent meeting", "latest meeting", "last meeting"
+    ///
+    /// Returns a fully-formed spoken answer when one of these intents fires,
+    /// otherwise nil so the orchestrator falls through to retrieval + LLM.
+    /// Pure function on `[MeetingHeader]` so it stays trivially testable and
+    /// safe to call from `@MainActor`.
+    static func answerMetadataQuestion(_ question: String, headers: [MeetingHeader]) -> String? {
+        let q = question.lowercased()
+        guard q.contains("meeting") else { return nil }
+
+        let countPatterns = ["how many", "number of", "count"]
+        let listPatterns = ["list", "what meetings", "which meetings", "show all", "show me all", "show my"]
+        let recentPatterns = ["recent", "latest", "last"]
+
+        if countPatterns.contains(where: { q.contains($0) }) {
+            let n = headers.count
+            if n == 0 { return "You have no meetings recorded yet." }
+            return "You have \(n) meeting\(n == 1 ? "" : "s") recorded."
+        }
+        if listPatterns.contains(where: { q.contains($0) }) {
+            if headers.isEmpty { return "You have no meetings recorded yet." }
+            let titles = headers.prefix(5).map { "\u{2022} \($0.title)" }.joined(separator: "\n")
+            return "Your meetings:\n\(titles)"
+        }
+        if recentPatterns.contains(where: { q.contains($0) }) {
+            guard let last = headers.first else { return "You have no meetings yet." }
+            return "Your most recent meeting is \"\(last.title)\"."
+        }
+        return nil
     }
 
     /// Compact multi-meeting overview block. Each header gets one short

@@ -560,7 +560,7 @@ private struct CrossMeetingBlock: View {
                     .font(.atSerif(19, weight: .regular))
                     .italic()
                     .lineSpacing(4)
-                    .foregroundStyle(palette.ink)
+                    .foregroundColor(Color(red: 0.12, green: 0.10, blue: 0.08))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else {
@@ -574,7 +574,7 @@ private struct CrossMeetingBlock: View {
                     Text(message.text)
                         .font(.atBody(16.5, weight: .regular))
                         .lineSpacing(5)
-                        .foregroundStyle(palette.ink)
+                        .foregroundColor(Color(red: 0.12, green: 0.10, blue: 0.08))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if !message.citations.isEmpty {

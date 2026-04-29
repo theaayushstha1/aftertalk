@@ -92,7 +92,7 @@ actor MeetingsRepository {
         try modelContext.save()
     }
 
-    func upsertSummaryEmbedding(meetingId: UUID, embedding: [Float]) throws {
+    func upsertSummaryEmbedding(meetingId: UUID, embedding: [Float]) async throws {
         let bytes = SwiftDataVectorStore.encode(embedding)
         let descriptor = FetchDescriptor<MeetingSummaryEmbedding>(
             predicate: #Predicate { $0.meetingId == meetingId }
@@ -150,6 +150,36 @@ actor MeetingsRepository {
         let byId = Dictionary(uniqueKeysWithValues: meetings.map { ($0.id, $0) })
         return meetingIds.compactMap { id in
             guard let m = byId[id] else { return nil }
+            let summary: MeetingHeader.SummarySnapshot? = m.summary.map { rec in
+                MeetingHeader.SummarySnapshot(
+                    decisions: rec.decisions,
+                    topics: rec.topics,
+                    actionItems: rec.actionItems.map { ($0.description, $0.owner) },
+                    openQuestions: rec.openQuestions
+                )
+            }
+            return MeetingHeader(
+                id: m.id,
+                title: m.title,
+                recordedAt: m.recordedAt,
+                summary: summary
+            )
+        }
+    }
+
+    /// Lightweight roster for the global Q&A metadata router: every meeting in
+    /// the store, ordered newest-first, projected down to the
+    /// `Sendable`-friendly `MeetingHeader` shape so it crosses the actor
+    /// boundary cleanly. Used by `QAOrchestrator.runAskGlobal` to short-circuit
+    /// trivial questions like "how many meetings have I had" without touching
+    /// the retriever or LLM.
+    func allMeetingHeaders() throws -> [MeetingHeader] {
+        var descriptor = FetchDescriptor<Meeting>(
+            sortBy: [SortDescriptor(\.recordedAt, order: .reverse)]
+        )
+        descriptor.relationshipKeyPathsForPrefetching = [\.summary]
+        let meetings = try modelContext.fetch(descriptor)
+        return meetings.map { m in
             let summary: MeetingHeader.SummarySnapshot? = m.summary.map { rec in
                 MeetingHeader.SummarySnapshot(
                     decisions: rec.decisions,
