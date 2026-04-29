@@ -18,6 +18,21 @@ struct RootView: View {
     @State private var qa: QAContext?
     @State private var debugVisible = false
     @State private var selectedTab: QSTab = .meetings
+    /// When the user taps the minimize chevron on the recording surface, we
+    /// hide the fullScreenCover but keep the audio engine + ASR streamer
+    /// running. They can navigate Meetings/Search/Chat/Settings while a
+    /// session is live and tap the floating "RECORDING · 00:23" pill to
+    /// expand back to the full waveform/transcript view. Auto-resets to
+    /// `false` whenever a recording stops so the next session starts
+    /// expanded by default.
+    @State private var recordingPanelMinimized = false
+    /// Drives the auto-dismissing "Summary ready" ping. Set to a non-nil
+    /// stage when the pipeline transitions into a post-recording state; a
+    /// 3s Task clears it on `.done`. We only render the toast when this is
+    /// non-nil AND `recording.isRecording == false` so a stale `.done` from
+    /// the previous session can never paint over a *new* live recording.
+    @State private var pipelineToast: ProcessingStage? = nil
+    @State private var pipelineToastTask: Task<Void, Never>? = nil
 
     init(recording: RecordingViewModel, perf: SessionPerfSampler, interruptions: AudioInterruptionObserver) {
         self.recording = recording
@@ -41,15 +56,57 @@ struct RootView: View {
                 onRecordTap: { Task { await recording.toggle() } }
             )
         }
+        .overlay(alignment: .top) {
+            if recording.isRecording && recordingPanelMinimized {
+                recordingMiniPill
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            } else if !recording.isRecording, let stage = pipelineToast {
+                PipelineToastView(stage: stage)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .animation(.spring(response: 0.32, dampingFraction: 0.78), value: selectedTab)
+        .animation(.easeInOut(duration: 0.22), value: recordingPanelMinimized)
+        .animation(.easeInOut(duration: 0.22), value: pipelineToast)
         .task { configurePipeline() }
+        .onChange(of: recording.isRecording) { _, isOn in
+            if isOn {
+                // Stale `.done(...)` from the previous session lingers on
+                // `pipeline.stage` until the next `process(...)` overwrites
+                // it. Hard-reset both the pipeline stage and the toast so
+                // nothing from the prior run paints over a new recording.
+                pipeline?.stage = .idle
+                pipelineToastTask?.cancel()
+                pipelineToast = nil
+                recordingPanelMinimized = false
+            } else {
+                recordingPanelMinimized = false
+            }
+        }
+        .onChange(of: pipelineStageKey) { _, _ in
+            handlePipelineStageChange()
+        }
         .alert("Microphone access required", isPresented: .constant(recording.permissionDenied)) {
             Button("OK") { recording.permissionDenied = false }
         } message: {
             Text("Aftertalk needs your microphone to record meetings. Audio never leaves your device.")
         }
-        .fullScreenCover(isPresented: .constant(recording.isRecording)) {
+        .fullScreenCover(isPresented: Binding(
+            get: { recording.isRecording && !recordingPanelMinimized },
+            // Catches the system-driven dismissal (swipe-down gesture) and
+            // converts it into a *minimize* instead of letting SwiftUI flip
+            // the binding to false — which we couldn't honor here anyway,
+            // because the audio engine is owned by `recording`. We don't
+            // want a pull-down to silently kill an in-flight meeting.
+            set: { newValue in
+                if !newValue && recording.isRecording {
+                    recordingPanelMinimized = true
+                }
+            }
+        )) {
             recordingSurface
         }
     }
@@ -86,10 +143,6 @@ struct RootView: View {
                     .padding(.top, 24)
                     .padding(.bottom, 6)
                 transcriptPane
-                if let stage = pipeline?.stage, stage != .idle {
-                    PipelineStatusView(stage: stage)
-                        .padding(.bottom, 8)
-                }
                 RecordButton(isRecording: recording.isRecording) {
                     Task { await recording.toggle() }
                 }
@@ -112,7 +165,22 @@ struct RootView: View {
     }
 
     private var recordHeader: some View {
-        HStack(alignment: .center) {
+        HStack(alignment: .center, spacing: 12) {
+            Button {
+                recordingPanelMinimized = true
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(palette.mute)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        Circle()
+                            .fill(palette.surface)
+                            .overlay(Circle().stroke(palette.line, lineWidth: 0.5))
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Minimize recording")
             VStack(alignment: .leading, spacing: 2) {
                 QSEyebrow("Aftertalk", color: palette.faint)
                 Text("On this device only")
@@ -125,6 +193,44 @@ struct RootView: View {
         .padding(.horizontal, 22)
         .padding(.top, AT.Space.safeTop)
         .padding(.bottom, 14)
+    }
+
+    // MARK: - Minimized recording pill (shown across all tabs while live)
+
+    private var recordingMiniPill: some View {
+        Button {
+            recordingPanelMinimized = false
+        } label: {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(palette.accent)
+                    .frame(width: 7, height: 7)
+                    .overlay(
+                        Circle().stroke(palette.accent.opacity(0.18), lineWidth: 4)
+                    )
+                Text("RECORDING")
+                    .font(.atMono(10, weight: .bold))
+                    .tracking(1.4)
+                    .foregroundStyle(palette.ink)
+                Text(elapsedString)
+                    .font(.atMono(11, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(palette.mute)
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(palette.faint)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(palette.surface)
+                    .overlay(Capsule().stroke(palette.line, lineWidth: 0.5))
+                    .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Expand recording. \(elapsedString) elapsed.")
     }
 
     private var statusEyebrow: some View {
@@ -229,6 +335,52 @@ struct RootView: View {
         .frame(maxHeight: .infinity)
     }
 
+    /// Stable key driven by pipeline stage so SwiftUI only re-fires
+    /// `onChange` on real transitions (not on every embedding progress tick,
+    /// which would otherwise reset the auto-dismiss timer mid-progress).
+    private var pipelineStageKey: String {
+        guard let stage = pipeline?.stage else { return "nil" }
+        switch stage {
+        case .idle: return "idle"
+        case .savingMeeting: return "saving"
+        case .polishingTranscript: return "polishing"
+        case .diarizing: return "diarizing"
+        case .chunking: return "chunking"
+        case .embedding: return "embedding"
+        case .summarizing: return "summarizing"
+        case .done: return "done"
+        case .failed: return "failed"
+        }
+    }
+
+    private func handlePipelineStageChange() {
+        guard let stage = pipeline?.stage else { return }
+        // Don't paint anything over a *new* live recording — the post-run
+        // toast belongs to the previous session.
+        guard !recording.isRecording else {
+            pipelineToastTask?.cancel()
+            pipelineToast = nil
+            return
+        }
+        switch stage {
+        case .idle:
+            pipelineToastTask?.cancel()
+            pipelineToast = nil
+        case .done, .failed:
+            pipelineToast = stage
+            pipelineToastTask?.cancel()
+            pipelineToastTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                if !Task.isCancelled { pipelineToast = nil }
+            }
+        default:
+            // Working stages stay until they advance or hit done/failed.
+            pipelineToast = stage
+            pipelineToastTask?.cancel()
+            pipelineToastTask = nil
+        }
+    }
+
     private func configurePipeline() {
         guard pipeline == nil else { return }
         let container = context.container
@@ -323,23 +475,39 @@ struct RootView: View {
     }
 }
 
-private struct PipelineStatusView: View {
+/// Auto-dismissing post-recording status pill. Lives at the RootView
+/// overlay level so it floats above whatever tab is showing once the
+/// fullScreenCover has been dismissed by the recording ending. Working
+/// stages persist until the next transition; `.done` / `.failed` clear
+/// themselves after 3s via `pipelineToastTask` in RootView.
+private struct PipelineToastView: View {
+    @Environment(\.atPalette) private var palette
     let stage: ProcessingStage
 
     var body: some View {
-        HStack(spacing: 8) {
-            ProgressView()
-                .controlSize(.small)
-                .opacity(isWorking ? 1 : 0)
+        HStack(spacing: 10) {
+            if isWorking {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(palette.accent)
+            } else {
+                Circle()
+                    .fill(isFailed ? palette.accent : palette.positive)
+                    .frame(width: 7, height: 7)
+            }
             Text(label)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            Spacer()
+                .font(.atMono(10, weight: .bold))
+                .tracking(1.2)
+                .foregroundStyle(palette.ink)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .padding(.horizontal, 16)
+        .background(
+            Capsule()
+                .fill(palette.surface)
+                .overlay(Capsule().stroke(palette.line, lineWidth: 0.5))
+                .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
+        )
     }
 
     private var isWorking: Bool {
@@ -349,17 +517,22 @@ private struct PipelineStatusView: View {
         }
     }
 
+    private var isFailed: Bool {
+        if case .failed = stage { return true }
+        return false
+    }
+
     private var label: String {
         switch stage {
         case .idle: ""
-        case .savingMeeting: "Saving meeting…"
-        case .polishingTranscript: "Polishing transcript…"
-        case .diarizing: "Identifying speakers…"
-        case .chunking: "Chunking transcript…"
-        case .embedding(let p, let t): "Embedding chunks (\(p)/\(t))"
-        case .summarizing: "Generating summary…"
-        case .done(_, let ms): "Summary ready (\(Int(ms)) ms)"
-        case .failed(let why): "Failed: \(why)"
+        case .savingMeeting: "SAVING MEETING"
+        case .polishingTranscript: "POLISHING TRANSCRIPT"
+        case .diarizing: "IDENTIFYING SPEAKERS"
+        case .chunking: "CHUNKING"
+        case .embedding(let p, let t): "EMBEDDING \(p)/\(t)"
+        case .summarizing: "GENERATING SUMMARY"
+        case .done(_, let ms): "SUMMARY READY · \(Int(ms))MS"
+        case .failed(let why): "FAILED · \(why.uppercased())"
         }
     }
 }
