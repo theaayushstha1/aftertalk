@@ -20,6 +20,13 @@ struct AftertalkApp: App {
     private let container: ModelContainer
 
     init() {
+        // Kick off ModelLocator's writable-directory bootstrap on a detached
+        // utility-priority task. This used to run synchronously inside
+        // `ModelLocator.appSupport()` (called from view-model `init`s on the
+        // main actor) and stalled cold launch by 50–150 ms. The actual
+        // `createDirectory` calls now run off-main; any caller about to write
+        // immediately awaits `ModelLocator.awaitBootstrap()`.
+        ModelLocator.kickoffBootstrap()
         self.container = AftertalkPersistence.makeContainer()
     }
 
