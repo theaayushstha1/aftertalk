@@ -121,7 +121,15 @@ actor AudioSessionManager {
         observeInterruptions()
     }
 
-    func deactivate() {
+    /// Tear down the active audio session. Default behavior **skips teardown
+    /// when a meeting recording is live** — chat views (`GlobalChatView`,
+    /// `MeetingDetailView`, `ChatThreadView`) call this from `.onDisappear`,
+    /// and a tab switch while recording would otherwise kill the engine
+    /// underneath the still-running mic tap. Pass `force: true` from the
+    /// recording owner (`RecordingViewModel.stop`) to actually release the
+    /// session at end of meeting.
+    func deactivate(force: Bool = false) {
+        if !force, mode == .recording { return }
         let session = AVAudioSession.sharedInstance()
         try? session.setActive(false, options: .notifyOthersOnDeactivation)
         mode = .none

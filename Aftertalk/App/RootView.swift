@@ -4,33 +4,56 @@ import SwiftUI
 struct RootView: View {
     @Environment(\.modelContext) private var context
     @Environment(PrivacyMonitor.self) private var privacy
+    @Environment(\.atPalette) private var palette
 
-    @State private var recording = RecordingViewModel()
+    // Injected from AftertalkApp so this VM survives TabView re-renders.
+    // It used to be `@State private var recording = RecordingViewModel()`,
+    // which tab switches could reset, dropping the AsyncStream consumer
+    // tasks while the audio engine kept running.
+    let recording: RecordingViewModel
+
     @State private var pipeline: MeetingProcessingPipeline?
     @State private var qa: QAContext?
     @State private var debugVisible = false
+    @State private var tabSelection: Int = 0
+
+    init(recording: RecordingViewModel) {
+        self.recording = recording
+    }
 
     var body: some View {
-        TabView {
-            recordTab
-                .tabItem { Label("Record", systemImage: "mic.circle.fill") }
+        ZStack(alignment: .top) {
+            TabView(selection: $tabSelection) {
+                recordTab
+                    .tabItem { Label("Record", systemImage: "mic.circle.fill") }
+                    .tag(0)
 
-            MeetingsListView(qaContext: qa)
-                .tabItem { Label("Meetings", systemImage: "list.bullet.rectangle.portrait") }
+                MeetingsListView(qaContext: qa)
+                    .tabItem { Label("Meetings", systemImage: "list.bullet.rectangle.portrait") }
+                    .tag(1)
 
-            GlobalChatView(qaContext: qa)
-                .tabItem { Label("Ask", systemImage: "rectangle.stack.badge.person.crop") }
+                GlobalChatView(qaContext: qa)
+                    .tabItem { Label("Ask", systemImage: "rectangle.stack.badge.person.crop") }
+                    .tag(2)
 
-            SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape") }
+                SettingsView()
+                    .tabItem { Label("Settings", systemImage: "gearshape") }
+                    .tag(3)
+            }
+
+            // Persistent floating recording indicator. Visible across every
+            // tab while a session is live, tappable to jump back to Record.
+            // Hidden when on the Record tab itself (already obvious there).
+            if recording.isRecording && tabSelection != 0 {
+                recordingPill
+                    .padding(.top, 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: recording.isRecording)
+        .animation(.easeInOut(duration: 0.2), value: tabSelection)
         .task {
             configurePipeline()
-            // Hand the privacy monitor to the VM so it can flip the
-            // `isCapturingMeeting` flag during start/stop. Without this the
-            // .violation state is unreachable and the auditable-privacy claim
-            // is dead code.
-            recording.privacyMonitor = privacy
         }
         .alert("Microphone access required", isPresented: .constant(recording.permissionDenied)) {
             Button("OK") { recording.permissionDenied = false }
@@ -39,7 +62,26 @@ struct RootView: View {
         }
     }
 
-    @Environment(\.atPalette) private var palette
+    private var recordingPill: some View {
+        Button {
+            tabSelection = 0
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(palette.accent)
+                    .frame(width: 7, height: 7)
+                Text("RECORDING")
+                    .font(.atMono(10, weight: .bold))
+                    .tracking(1.6)
+                    .foregroundStyle(palette.ink)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Recording in progress. Tap to return to Record tab.")
+    }
 
     private var recordTab: some View {
         ZStack(alignment: .top) {
@@ -307,7 +349,7 @@ private struct PipelineStatusView: View {
 }
 
 #Preview {
-    RootView()
+    RootView(recording: RecordingViewModel())
         .environment(PrivacyMonitor())
         .modelContainer(AftertalkPersistence.makeContainer())
 }

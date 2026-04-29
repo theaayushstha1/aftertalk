@@ -127,7 +127,7 @@ final class RecordingViewModel {
         capture.stop()
         let audioURL = capture.lastRecordingURL
         await streamer.stop()
-        await AudioSessionManager.shared.deactivate()
+        await AudioSessionManager.shared.deactivate(force: true)
         // Moonshine fires a final LineCompleted from stream.stop() that still
         // has to traverse the dispatch queue + AsyncStream + main-actor consumer
         // before it lands in committedLines. 300ms gives that whole chain time
@@ -146,7 +146,7 @@ final class RecordingViewModel {
     private func rollback() async {
         capture.stop()
         await streamer.stop()
-        await AudioSessionManager.shared.deactivate()
+        await AudioSessionManager.shared.deactivate(force: true)
         isRecording = false
         privacyMonitor?.isCapturingMeeting = false
         stopElapsedTimer()
