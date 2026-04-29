@@ -111,7 +111,12 @@ final class AudioCaptureService: @unchecked Sendable {
                                                              sourceSampleRate: sourceSampleRate,
                                                              log: log)
             if !samples.isEmpty {
-                pump.append(samples: samples, sampleRate: Int32(targetSampleRate))
+                // ASR feed gets a gain boost so far-field speakers (>1 m from
+                // the phone) land in Moonshine's encoder operating range.
+                // WAV destination keeps the raw signal so Parakeet polish and
+                // demo playback stay authentic.
+                let boosted = AudioPreprocessor.boostForASR(samples)
+                pump.append(samples: boosted, sampleRate: Int32(targetSampleRate))
                 if let writerRef {
                     AudioCaptureService.writeSamples(samples,
                                                      to: writerRef,
