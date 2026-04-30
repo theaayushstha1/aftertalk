@@ -293,15 +293,31 @@ final class MeetingProcessingPipeline {
             stage = .embedding(progress: 0, total: drafts.count)
             var vectors: [[Float]] = []
             vectors.reserveCapacity(drafts.count)
+            var degradedRows = 0
             for (i, draft) in drafts.enumerated() {
                 // Prefix every embedded chunk with meeting + speaker context so
                 // cosine similarity rewards "what did Sara say about X" against
                 // chunks where Sara was the speaker, and biases cross-meeting
                 // recall toward the right meeting topic.
                 let embedText = Self.buildEmbedText(meetingTitle: title, draft: draft)
-                let v = try await embeddings.embed(embedText)
-                vectors.append(v)
+                // Tolerate per-row embedding failure. When `embeddings` is the
+                // `NoOpEmbeddingService` fallback (NLContextual asset missing),
+                // every call throws — but we still want the chunk to persist
+                // so the meeting + transcript + summary stay searchable via
+                // verbatim text. An empty vector lands as `embedding = 0
+                // bytes / embeddingDim = 0` in storage, and the retriever
+                // skips dim-mismatched rows so they neither poison nor
+                // contribute to semantic search.
+                if let v = try? await embeddings.embed(embedText) {
+                    vectors.append(v)
+                } else {
+                    vectors.append([])
+                    degradedRows += 1
+                }
                 stage = .embedding(progress: i + 1, total: drafts.count)
+            }
+            if degradedRows > 0 {
+                log.warning("pipeline: \(degradedRows, privacy: .public)/\(drafts.count, privacy: .public) chunks saved with dim=0 (embedding service unavailable) — meeting will be present in lists/transcripts but absent from semantic search until embeddings repair")
             }
 
             try await repository.attachChunks(to: meetingId, drafts: drafts, embeddings: vectors)
@@ -343,8 +359,18 @@ final class MeetingProcessingPipeline {
             // transcript head — Layer-1 cross-meeting routing matches on the
             // *gist* of a meeting, not its opening minute.
             let summaryText = Self.buildSummaryEmbedText(title: title, summary: result.summary)
-            let summaryEmbedding = try await embeddings.embed(summaryText)
-            try await repository.upsertSummaryEmbedding(meetingId: meetingId, embedding: summaryEmbedding)
+            // Same per-row tolerance as the chunk loop above. If the
+            // summary embed throws (NLContextual unavailable), skip the
+            // upsert — the meeting still saves with its title, transcript,
+            // chunks, and structured summary. Layer-1 cross-meeting
+            // routing for this meeting will return zero hits until the
+            // embedding service recovers and a future repair sweep
+            // re-embeds it.
+            if let summaryEmbedding = try? await embeddings.embed(summaryText) {
+                try await repository.upsertSummaryEmbedding(meetingId: meetingId, embedding: summaryEmbedding)
+            } else {
+                log.warning("pipeline: summary embedding skipped (service unavailable) — meeting won't surface in cross-meeting Q&A until repair sweep")
+            }
 
             stage = .done(meetingId: meetingId, summaryLatencyMillis: latency)
             return meetingId

@@ -332,6 +332,12 @@ struct SearchView: View {
     // MARK: - Mode implementations
 
     private func semanticSearch(_ text: String) async -> [SearchHit] {
+        // Try semantic first; fall back to verbatim when the embedding
+        // service is unavailable (fresh-device airplane-mode, the same
+        // failure the chat surfaces gate via `semanticQAAvailable`).
+        // Returning [] here would have left the user with a silently-
+        // empty search experience; verbatim is strictly better — it
+        // still finds anything that contains the query as a substring.
         do {
             let embeddings = try NLContextualEmbeddingService()
             let store = SwiftDataVectorStore(modelContainer: modelContext.container)
@@ -351,7 +357,7 @@ struct SearchView: View {
             }
             return Self.dedupeHits(raw)
         } catch {
-            return []
+            return verbatimSearch(text)
         }
     }
 

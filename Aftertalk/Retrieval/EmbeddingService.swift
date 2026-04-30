@@ -68,22 +68,32 @@ final class NLContextualEmbeddingService: EmbeddingService, @unchecked Sendable 
 
 /// No-op embedding fallback for when `NLContextualEmbedding` can't load on
 /// this device — typically a fresh airplane-mode iPhone whose system
-/// language asset hasn't been downloaded yet. Returns a fixed zero vector
-/// so chunks + summaries still persist (the rest of the pipeline doesn't
-/// have to special-case nil), but cosine similarity against zero vectors
-/// is degenerate so retrieval will return no hits and the grounding gate
-/// will fire. The chat surfaces gate themselves on
-/// `QAContext.semanticQAAvailable` and show a "Semantic Q&A unavailable"
-/// banner, so users see a clear explanation instead of confusing
-/// disclaimers from the orchestrator.
+/// language asset hasn't been downloaded yet. **Throws on every embed
+/// call** so the pipeline can detect the degraded state per-row and
+/// persist the chunk/summary with `embeddingDim = 0` instead of saving
+/// dummy zero vectors.
+///
+/// Why throwing instead of returning zeros (the previous design):
+///   - Reviewer flagged that persisted zero embeddings poison future
+///     retrieval. If NLContextual recovers later, those chunks remain
+///     semantically dead unless explicitly re-embedded — but the storage
+///     layer can't tell "0-dim placeholder" from "real but empty"
+///     without an out-of-band marker.
+///   - Throwing makes the failure explicit at the call site. The
+///     pipeline now tolerates per-row failures (chunks are saved with
+///     dim = 0 and skipped at retrieval time) instead of saving
+///     dim = 8 placeholders that confuse the cosine path.
+///
+/// The repair flow (re-embed dim=0 rows once NLContextual recovers) is
+/// documented in the README "what I'd build with another two weeks"
+/// section.
 final class NoOpEmbeddingService: EmbeddingService, @unchecked Sendable {
-    /// 8 floats is enough to keep persistence happy and small enough that
-    /// every saved chunk's storage overhead is negligible. The dimension
-    /// is intentionally not 512 — anyone reading SwiftData later can tell
-    /// from the size that this row was written in degraded mode.
-    let dimension: Int = 8
+    /// Dimension is reported as 0 to match the dim of stored degraded
+    /// rows. Any caller asking the dim before calling embed gets a
+    /// truthful "I don't have a working model" signal.
+    let dimension: Int = 0
 
     func embed(_ text: String) async throws -> [Float] {
-        return [Float](repeating: 0, count: dimension)
+        throw EmbeddingError.modelUnavailable
     }
 }

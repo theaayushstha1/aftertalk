@@ -50,9 +50,24 @@ actor SwiftDataVectorStore: VectorStore {
         }
         let chunks = try modelContext.fetch(descriptor)
         let queryNorm = Self.l2Norm(query)
+        let queryDim = query.count
         var hits: [ChunkHit] = []
         hits.reserveCapacity(chunks.count)
         for c in chunks {
+            // Skip rows whose stored dim doesn't match the live query dim.
+            // This catches two failure modes:
+            //   1. Chunks persisted in degraded mode (NLContextual fallback
+            //      was active during the meeting's pipeline run) carry
+            //      `embeddingDim = 0`. They MUST NOT score against a
+            //      healthy 512-dim query — that would otherwise produce
+            //      a deceptive score=0 ranking that pollutes topK when
+            //      few real hits exist.
+            //   2. Future model swaps (gte-small → 384-dim) need the same
+            //      filter so a half-migrated DB doesn't mix dims.
+            // The dim-mismatch case is silently dropped from this query;
+            // a future repair sweep is responsible for re-embedding those
+            // rows when a working embedding service is available.
+            guard c.embeddingDim == queryDim else { continue }
             let v = Self.decode(c.embedding, dim: c.embeddingDim)
             let s = Self.cosine(query, v, qNorm: queryNorm)
             hits.append(ChunkHit(
@@ -74,7 +89,12 @@ actor SwiftDataVectorStore: VectorStore {
         let descriptor = FetchDescriptor<MeetingSummaryEmbedding>()
         let rows = try modelContext.fetch(descriptor)
         let queryNorm = Self.l2Norm(query)
-        var scored = rows.map { row in
+        let queryDim = query.count
+        // Same dim-mismatch filter as `searchChunks`. See the comment
+        // there for why filtering at the dim boundary is the right
+        // invariant rather than relying on the cosine returning 0.
+        var scored = rows.compactMap { row -> (meetingId: UUID, score: Float)? in
+            guard row.embeddingDim == queryDim else { return nil }
             let v = Self.decode(row.embedding, dim: row.embeddingDim)
             return (meetingId: row.meetingId, score: Self.cosine(query, v, qNorm: queryNorm))
         }
