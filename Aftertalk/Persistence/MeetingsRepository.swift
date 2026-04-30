@@ -83,16 +83,33 @@ actor MeetingsRepository {
     }
 
     /// Survey current index state against the supplied target dimension
-    /// (the live embedding service's `dimension`). Cheap fetch — just
-    /// counts rows by dim equality.
+    /// (the live embedding service's `dimension`). Cheap fetch — counts
+    /// degraded rows AND meetings whose summary embedding row is
+    /// entirely missing. Earlier shape only counted existing rows by
+    /// dim equality, but the pipeline can SKIP creating the summary
+    /// row entirely when embedding fails (see
+    /// `MeetingProcessingPipeline.swift` — the upsert is wrapped in
+    /// `try?`). Without counting missing rows, repair would report
+    /// "all healthy" while global Q&A scope-routing was still blind to
+    /// those meetings.
     func indexHealth(targetDim: Int) throws -> IndexHealth {
         let chunks = try modelContext.fetch(FetchDescriptor<TranscriptChunk>())
         let summaries = try modelContext.fetch(FetchDescriptor<MeetingSummaryEmbedding>())
+        let allMeetings = try modelContext.fetch(FetchDescriptor<Meeting>())
+        let summaryIds = Set(summaries.map(\.meetingId))
+        // A meeting needs a summary embedding when (a) it has a
+        // structured summary at all and (b) no MeetingSummaryEmbedding
+        // row exists. Either dim-mismatch OR missing-row counts as
+        // degraded.
+        let meetingsWithSummary = allMeetings.filter { $0.summary != nil }
+        let missingSummaryEmbeddings = meetingsWithSummary.filter { !summaryIds.contains($0.id) }.count
+
         var h = IndexHealth()
         h.totalChunks = chunks.count
         h.degradedChunks = chunks.filter { $0.embeddingDim != targetDim }.count
-        h.totalSummaryEmbeddings = summaries.count
+        h.totalSummaryEmbeddings = summaries.count + missingSummaryEmbeddings
         h.degradedSummaryEmbeddings = summaries.filter { $0.embeddingDim != targetDim }.count
+            + missingSummaryEmbeddings
         return h
     }
 
@@ -117,9 +134,25 @@ actor MeetingsRepository {
         // reports don't jump straight from 0% to 95%.
         let chunks = try modelContext.fetch(FetchDescriptor<TranscriptChunk>())
         let degradedChunks = chunks.filter { $0.embeddingDim != targetDim }
-        var summaries = try modelContext.fetch(FetchDescriptor<MeetingSummaryEmbedding>())
+        let summaries = try modelContext.fetch(FetchDescriptor<MeetingSummaryEmbedding>())
         let degradedSummaries = summaries.filter { $0.embeddingDim != targetDim }
-        let total = degradedChunks.count + degradedSummaries.count
+        // Meetings whose summary embedding row is entirely MISSING.
+        // Earlier the repair only iterated existing rows; if the
+        // pipeline ran under degraded fallback and skipped
+        // `upsertSummaryEmbedding`, the row never existed and repair
+        // missed it. P1 fix: iterate meetings with a summary but no
+        // embedding row, and create one in place. Uses the same
+        // `MeetingSummaryRecord` shape that `MeetingProcessingPipeline.
+        // buildSummaryEmbedText` would have used (title + topics +
+        // decisions + actions) so the embedding is high-signal, not
+        // just the meeting title.
+        let allMeetings = try modelContext.fetch(FetchDescriptor<Meeting>())
+        let summaryIds = Set(summaries.map(\.meetingId))
+        let meetingsMissingSummaryEmbedding = allMeetings.filter { meeting in
+            meeting.summary != nil && !summaryIds.contains(meeting.id)
+        }
+
+        let total = degradedChunks.count + degradedSummaries.count + meetingsMissingSummaryEmbedding.count
         var done = 0
 
         for chunk in degradedChunks {
@@ -137,7 +170,6 @@ actor MeetingsRepository {
             do {
                 v = try await embeddings.embed(text)
             } catch {
-                // Service still not working — bail and let the user retry.
                 throw error
             }
             chunk.embedding = SwiftDataVectorStore.encode(v)
@@ -147,23 +179,62 @@ actor MeetingsRepository {
         }
 
         for row in degradedSummaries {
-            // We don't have a one-line "summary text" stored on the row,
-            // so re-embed the meeting title as a fallback. Better than
-            // leaving dim=0; if the user wants the full summary embed,
-            // the next pipeline run does that work. The repair tool's
-            // job is "make these rows score against the live query
-            // dim," not "achieve identical embeddings to a re-record."
             guard let meeting = try? fetchMeeting(row.meetingId) else { continue }
-            let v = try await embeddings.embed(meeting.title)
+            let summaryText = Self.summaryEmbedText(for: meeting)
+            let v = try await embeddings.embed(summaryText)
             row.embedding = SwiftDataVectorStore.encode(v)
             row.embeddingDim = v.count
             done += 1
             progress?(done, total)
         }
-        // Re-fetch summaries to pick up changes for the return count.
-        summaries = try modelContext.fetch(FetchDescriptor<MeetingSummaryEmbedding>())
+
+        // Create summary embedding rows that never existed. Without this
+        // step, meetings recorded under the embedding fallback path
+        // would stay invisible to global Q&A's Layer-1 scope routing
+        // even after a "successful" repair.
+        for meeting in meetingsMissingSummaryEmbedding {
+            let summaryText = Self.summaryEmbedText(for: meeting)
+            let v = try await embeddings.embed(summaryText)
+            let row = MeetingSummaryEmbedding(
+                meetingId: meeting.id,
+                embedding: SwiftDataVectorStore.encode(v),
+                embeddingDim: v.count
+            )
+            modelContext.insert(row)
+            done += 1
+            progress?(done, total)
+        }
+
         try modelContext.save()
-        return (degradedChunks.count, degradedSummaries.count)
+        return (
+            chunks: degradedChunks.count,
+            summaries: degradedSummaries.count + meetingsMissingSummaryEmbedding.count
+        )
+    }
+
+    /// Build the summary-embedding source text for a meeting. Mirrors the
+    /// shape `MeetingProcessingPipeline.buildSummaryEmbedText` produces
+    /// at meeting-creation time: title + topics + decisions + actions.
+    /// Lives here so repair can reproduce it without depending on the
+    /// pipeline module.
+    private static func summaryEmbedText(for meeting: Meeting) -> String {
+        var parts: [String] = ["[Meeting: \(String(meeting.title.prefix(80)))]"]
+        if let summary = meeting.summary {
+            if !summary.topics.isEmpty {
+                parts.append("Topics: \(summary.topics.prefix(8).joined(separator: "; "))")
+            }
+            if !summary.decisions.isEmpty {
+                parts.append("Decisions: \(summary.decisions.prefix(6).joined(separator: "; "))")
+            }
+            let actions = summary.actionItems.prefix(8).map { item -> String in
+                if let owner = item.owner, !owner.isEmpty { return "\(owner): \(item.description)" }
+                return item.description
+            }
+            if !actions.isEmpty {
+                parts.append("Actions: \(actions.joined(separator: "; "))")
+            }
+        }
+        return parts.joined(separator: " ")
     }
 
     /// Persist the per-meeting speaker roster produced by Pyannote diarization.

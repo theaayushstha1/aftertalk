@@ -28,6 +28,7 @@
 		310FCE3053C44A06CA540486 /* PrivacyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99862B2E5CBEF50199E2EB90 /* PrivacyMonitor.swift */; };
 		34114B893F140710EA8BE803 /* MeetingsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97DA4F3A5B7929B96475F1C /* MeetingsListView.swift */; };
 		38C0ACF29F72EA68849C825E /* QuestionASR.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B91B8023F976CD72C5925C7 /* QuestionASR.swift */; };
+		3A8741759BAC991532DEAFEA /* BM25IndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13FF399B854E60B933187DE2 /* BM25IndexTests.swift */; };
 		3B43BAE51490BD9B154C227A /* QAContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6812DF977A4E1532C1AECFFE /* QAContext.swift */; };
 		43E41EC61BEEBDE7E303D4D1 /* TTSService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75EB00EA79CC6EBF481D45C9 /* TTSService.swift */; };
 		4B7876DB7DC4BD31E4809923 /* AudioSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD030A4E86E5D2FEAD786508 /* AudioSessionManager.swift */; };
@@ -69,6 +70,7 @@
 		D78CC1CDFEA14C8B6AC12A9D /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77CD54E13E785DC804BA533E /* DesignSystem.swift */; };
 		D89F2266CDA1F8D6FDC3BA12 /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F5C57518CD7B9882CEA987 /* AudioCaptureService.swift */; };
 		D8F48C67AD22840B58605D3E /* TranscriptChunk.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6826ECA346535661384A4E01 /* TranscriptChunk.swift */; };
+		DE4BB0CA5FF5590CCB003EF2 /* RRFFusionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14DE1A15A5DF915DEBE3C89B /* RRFFusionTests.swift */; };
 		DF66AE7FE14A561803682DDC /* AftertalkApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23238DEF6909E2FD5F72A8D4 /* AftertalkApp.swift */; };
 		E2E9A9250586694F16B0EA44 /* QSComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05AB5125EE60D010710B1E7A /* QSComponents.swift */; };
 		E4152F9F2F1EC7E9B604A23C /* KokoroVoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9825B712AA33D92AF42EEFF5 /* KokoroVoice.swift */; };
@@ -96,6 +98,8 @@
 		05AB5125EE60D010710B1E7A /* QSComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QSComponents.swift; sourceTree = "<group>"; };
 		0CBA1A2342F22F861527BB65 /* BM25Index.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BM25Index.swift; sourceTree = "<group>"; };
 		12CE4DE71780FBF89F329ECF /* ChunkIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChunkIndexer.swift; sourceTree = "<group>"; };
+		13FF399B854E60B933187DE2 /* BM25IndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BM25IndexTests.swift; sourceTree = "<group>"; };
+		14DE1A15A5DF915DEBE3C89B /* RRFFusionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RRFFusionTests.swift; sourceTree = "<group>"; };
 		1516301CB8176D2D224DAB44 /* PyannoteDiarizationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PyannoteDiarizationServiceTests.swift; sourceTree = "<group>"; };
 		1A74B7708239C81455540EDD /* kokoro-82m-coreml */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "kokoro-82m-coreml"; path = "Aftertalk/Resources/Models/kokoro-82m-coreml"; sourceTree = SOURCE_ROOT; };
 		1B1B0BEC1102036E81A4290D /* ModelLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelLocator.swift; sourceTree = "<group>"; };
@@ -247,9 +251,11 @@
 		1367281F287246BA83FAFA3A /* AftertalkTests */ = {
 			isa = PBXGroup;
 			children = (
+				13FF399B854E60B933187DE2 /* BM25IndexTests.swift */,
 				BAE09AAAE05EB184EC21CE2B /* EnergyVADGateTests.swift */,
 				3CF3D31F0194A15A0E11E838 /* MeetingTitleSanitizerTests.swift */,
 				1516301CB8176D2D224DAB44 /* PyannoteDiarizationServiceTests.swift */,
+				14DE1A15A5DF915DEBE3C89B /* RRFFusionTests.swift */,
 				3177E1DD8E7EF4546F7C303A /* SentenceBoundaryDetectorTests.swift */,
 			);
 			path = AftertalkTests;
@@ -567,9 +573,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3A8741759BAC991532DEAFEA /* BM25IndexTests.swift in Sources */,
 				2EADDFB8A2E76A86F75CDACA /* EnergyVADGateTests.swift in Sources */,
 				EC240F323B31F89C5DDE5AC1 /* MeetingTitleSanitizerTests.swift in Sources */,
 				4EE80D9BD4098DEDF089B373 /* PyannoteDiarizationServiceTests.swift in Sources */,
+				DE4BB0CA5FF5590CCB003EF2 /* RRFFusionTests.swift in Sources */,
 				E56227734BB00209FFACC08F /* SentenceBoundaryDetectorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

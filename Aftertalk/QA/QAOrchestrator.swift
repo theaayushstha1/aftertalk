@@ -542,6 +542,25 @@ final class QAOrchestrator {
             return nil
         }
 
+        // Fire a best-effort retrieval IN PARALLEL with LLM streaming so
+        // the chat bubble still gets citation pills. The LLM doesn't see
+        // these — its context is the full transcript — but the user does
+        // get tappable jump-to-excerpt links for the answers, which were
+        // a real reviewer ask. Top 3 to keep the bubble tidy. Falls
+        // through with empty citations on retrieval failure rather than
+        // delaying the LLM call.
+        // Capture `meeting.id` into a local UUID before crossing the
+        // async boundary — `Meeting` is a SwiftData @Model and isn't
+        // Sendable, so the closure can't directly capture it under
+        // Swift 6 strict concurrency.
+        let meetingId = meeting.id
+        async let citationHits: [ChunkHit] = {
+            let result = try? await self.retriever.retrieve(
+                RetrievalQuery(text: question, scopedToMeeting: meetingId, topKChunks: 3)
+            )
+            return result?.chunks ?? []
+        }()
+
         let overviewBlock = Self.overview(for: meeting).map { "Meeting overview:\n\($0)\n\n" } ?? ""
         let prompt = """
         Question: \(question)
@@ -616,13 +635,22 @@ final class QAOrchestrator {
         await awaitSpeakChain()
         bargeIn.stop()
 
+        // Pick up the best-effort citations we kicked off above.
+        let hits = await citationHits
+        let citations = hits.map { c in
+            ChunkCitation(
+                chunkId: c.chunkId, meetingId: c.meetingId,
+                startSec: c.startSec, endSec: c.endSec, speakerName: c.speakerName
+            )
+        }
+
         let elapsed = totalStart.duration(to: .now).aftertalkMillis
         liveAnswer = ""
         stage = .idle
         return QAResult(
             question: question,
             answer: lastSnapshot,
-            citations: [],  // no chunk-level retrieval hits in this path
+            citations: citations,
             groundedByLLM: true,
             ttfswMillis: ttfswMillis,
             totalMillis: elapsed

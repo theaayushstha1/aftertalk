@@ -100,7 +100,7 @@ final class HierarchicalRetriever: Retriever, @unchecked Sendable {
         // anything not yet upgraded.
         let widenedK = max(query.topKChunks * 3, 24)
         async let denseHits = store.searchChunks(query: queryVec, scopedTo: scope, topK: widenedK)
-        async let bm25Hits: [(chunkId: UUID, score: Float)] = {
+        async let bm25Hits: [ChunkHit] = {
             guard let bm25 else { return [] }
             return (try? await bm25.searchChunks(query: trimmed, scopedTo: scope, topK: widenedK)) ?? []
         }()
@@ -126,15 +126,24 @@ final class HierarchicalRetriever: Retriever, @unchecked Sendable {
     /// dense (cosine [0,1]) and BM25 (unbounded), which is exactly why
     /// we use it instead of a weighted score sum.
     ///
+    /// Both inputs are now hydrated `[ChunkHit]`. Earlier the BM25 list
+    /// was just `(chunkId, score)` and the lookup table had only dense
+    /// hits, so a chunk that BM25 found but dense missed got silently
+    /// dropped — defeating the entire point of hybrid retrieval. P1
+    /// fix: take both as full hits, prefer the dense version when both
+    /// sources agree (cosine score matters for the grounding gate),
+    /// and keep BM25-only hits with their BM25 score.
+    ///
     /// The fused result is re-sorted by RRF score and we take the top
-    /// `topK`. Each returned `ChunkHit` carries the original DENSE
-    /// `score` (cosine) so downstream code that reads `topScore` still
-    /// gets a familiar signal — we don't replace cosine with RRF
-    /// because the orchestrator's grounding gate is tuned against
-    /// cosine. RRF is a re-ranker, not a score replacer.
+    /// `topK`. The grounding gate runs on `topScore` from this fused
+    /// list — when the top hit is a dense match its `score` is cosine
+    /// (familiar signal); when it's a BM25-only match its `score` is
+    /// the raw BM25 number (different scale but the gate's role of
+    /// "refuse only on truly nothing" still works because BM25 > 0
+    /// implies actual term overlap).
     static func fuseRRF(
         dense: [ChunkHit],
-        bm25: [(chunkId: UUID, score: Float)],
+        bm25: [ChunkHit],
         topK: Int
     ) -> [ChunkHit] {
         let k: Float = 60
@@ -144,12 +153,15 @@ final class HierarchicalRetriever: Retriever, @unchecked Sendable {
             rrf[hit.chunkId, default: 0] += 1.0 / (k + Float(rank + 1))
             lookup[hit.chunkId] = hit
         }
-        for (rank, entry) in bm25.enumerated() {
-            rrf[entry.chunkId, default: 0] += 1.0 / (k + Float(rank + 1))
-            // BM25-only hits without a dense ChunkHit can't contribute
-            // to the result (we don't have the chunk's text/timing on
-            // hand here). They still influence the RRF ranking when
-            // they coincide with a dense hit, which is the common case.
+        for (rank, hit) in bm25.enumerated() {
+            rrf[hit.chunkId, default: 0] += 1.0 / (k + Float(rank + 1))
+            // Don't overwrite a dense hit's cosine score — the dense
+            // version carries the score the grounding gate is tuned
+            // against. Only fill in if BM25 found this chunk before
+            // dense did.
+            if lookup[hit.chunkId] == nil {
+                lookup[hit.chunkId] = hit
+            }
         }
         let sorted = rrf.sorted { $0.value > $1.value }
         var out: [ChunkHit] = []

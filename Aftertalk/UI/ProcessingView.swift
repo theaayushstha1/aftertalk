@@ -126,7 +126,7 @@ struct ProcessingView: View {
         .init(label: "Diarizing speakers", sub: "Pyannote · on-device"),
         .init(label: "Aligning transcript", sub: "Parakeet · streaming"),
         .init(label: "Distilling decisions", sub: "Foundation Models"),
-        .init(label: "Indexing for memory", sub: "gte-small · embeddings"),
+        .init(label: "Indexing for memory", sub: "NLContextual · embeddings"),
     ]
 
     /// Map the runtime `ProcessingStage` onto the visual 4-step checklist.

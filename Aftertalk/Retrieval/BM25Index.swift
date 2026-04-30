@@ -23,15 +23,24 @@ import SwiftData
 /// for the canonical references.
 @ModelActor
 actor BM25Index {
-    /// Search chunks lexically. Returns `(chunkId, score)` pairs ranked
-    /// by BM25; caller fuses with dense scores via RRF. `scopedTo` mirrors
-    /// `SwiftDataVectorStore.searchChunks` so per-meeting and global
-    /// retrieval share the same scoping path.
+    /// Search chunks lexically. Returns hydrated `ChunkHit` objects ranked
+    /// by BM25 — the same shape `SwiftDataVectorStore.searchChunks`
+    /// returns — so the caller's RRF can fuse the two ranked lists and
+    /// keep BM25-only hits in the final output. Earlier shape was just
+    /// `(chunkId, score)` and the caller's lookup table only knew about
+    /// dense hits, so a chunk that BM25 found but dense missed got
+    /// silently dropped at the fusion step. That defeated the entire
+    /// point of hybrid retrieval (dense paraphrase recall + BM25
+    /// keyword precision); P1 fix returns full hits so RRF can keep
+    /// them.
+    ///
+    /// `scopedTo` mirrors `SwiftDataVectorStore.searchChunks` so
+    /// per-meeting and global retrieval share the same scoping path.
     func searchChunks(
         query: String,
         scopedTo meetingIds: [UUID]?,
         topK: Int
-    ) throws -> [(chunkId: UUID, score: Float)] {
+    ) throws -> [ChunkHit] {
         let queryTerms = Self.tokenize(query)
         guard !queryTerms.isEmpty else { return [] }
 
@@ -50,37 +59,42 @@ actor BM25Index {
         // Build the inverted index for THIS query's term set only — we
         // don't need a full corpus-wide index because BM25's IDF only
         // matters for the terms the query actually contains.
-        var docTermCounts: [(id: UUID, terms: [String: Int], length: Int)] = []
-        docTermCounts.reserveCapacity(chunks.count)
+        struct DocStats {
+            let id: UUID
+            let terms: [String: Int]
+            let length: Int
+        }
+        var docs: [DocStats] = []
+        docs.reserveCapacity(chunks.count)
         var docFreq: [String: Int] = [:]
+        var chunkById: [UUID: TranscriptChunk] = [:]
+        chunkById.reserveCapacity(chunks.count)
         for c in chunks {
+            chunkById[c.id] = c
             let docTerms = Self.tokenize(c.text)
             var counts: [String: Int] = [:]
-            for t in docTerms {
-                counts[t, default: 0] += 1
-            }
-            // For IDF, we only care which docs contain each query term.
+            for t in docTerms { counts[t, default: 0] += 1 }
             for q in queryTerms where counts[q] != nil {
                 docFreq[q, default: 0] += 1
             }
-            docTermCounts.append((id: c.id, terms: counts, length: docTerms.count))
+            docs.append(DocStats(id: c.id, terms: counts, length: docTerms.count))
         }
 
         let N = Float(chunks.count)
         let avgDocLength: Float = {
-            guard !docTermCounts.isEmpty else { return 1 }
-            let total = docTermCounts.reduce(0) { $0 + $1.length }
-            return Float(total) / Float(docTermCounts.count)
+            guard !docs.isEmpty else { return 1 }
+            let total = docs.reduce(0) { $0 + $1.length }
+            return Float(total) / Float(docs.count)
         }()
 
         let k1: Float = 1.5
         let b: Float = 0.75
 
-        // Score every doc against the query terms. Standard BM25:
+        // Standard BM25:
         //   score = Σ_{t∈q} idf(t) · (tf(t,d) · (k1+1)) / (tf(t,d) + k1·(1 - b + b · |d|/avgdl))
         var scored: [(chunkId: UUID, score: Float)] = []
-        scored.reserveCapacity(docTermCounts.count)
-        for doc in docTermCounts {
+        scored.reserveCapacity(docs.count)
+        for doc in docs {
             var s: Float = 0
             for q in queryTerms {
                 guard let tf = doc.terms[q] else { continue }
@@ -95,12 +109,35 @@ actor BM25Index {
                 let denominator = tfFloat + k1 * normalizedLength
                 s += idf * (numerator / denominator)
             }
-            if s > 0 {
-                scored.append((chunkId: doc.id, score: s))
-            }
+            if s > 0 { scored.append((chunkId: doc.id, score: s)) }
         }
         scored.sort { $0.score > $1.score }
-        return Array(scored.prefix(topK))
+
+        // Hydrate the top scored ids back into full `ChunkHit`s so the
+        // fusion layer can carry BM25-only hits all the way to the
+        // packer. We attach the BM25 raw score to the hit for now — the
+        // grounding gate is tuned against cosine, but the gate runs on
+        // `topScore` from the FUSED list and the fusion preserves
+        // dense hits' cosine when both sources agree (the common case).
+        // BM25-only outliers will surface with a BM25 score; that's
+        // fine — the LLM still sees the chunk, and the gate's role of
+        // "refuse on truly nothing" still works.
+        var out: [ChunkHit] = []
+        out.reserveCapacity(min(topK, scored.count))
+        for entry in scored.prefix(topK) {
+            guard let c = chunkById[entry.chunkId] else { continue }
+            out.append(ChunkHit(
+                chunkId: c.id,
+                meetingId: c.meetingId,
+                text: c.text,
+                startSec: c.startSec,
+                endSec: c.endSec,
+                speakerName: c.speakerName,
+                score: entry.score,
+                orderIndex: c.orderIndex
+            ))
+        }
+        return out
     }
 
     /// Lowercase + split on non-alphanumeric + drop length<2 + drop a
