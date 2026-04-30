@@ -139,10 +139,14 @@ struct RootView: View {
                 LowBatteryBanner()
                 timer
                 fragmentLabel
-                ImmersiveWaveform(height: 180, isActive: recording.isRecording)
+                // Waveform shrunk from 180→120 + trimmed padding to give the
+                // live transcript more room. The transcript pane uses
+                // `.frame(maxHeight: .infinity)` so the reclaimed space
+                // automatically flows there.
+                ImmersiveWaveform(height: 120, isActive: recording.isRecording)
                     .padding(.horizontal, 16)
-                    .padding(.top, 24)
-                    .padding(.bottom, 6)
+                    .padding(.top, 12)
+                    .padding(.bottom, 4)
                 transcriptPane
                 RecordButton(isRecording: recording.isRecording) {
                     Task { await recording.toggle() }
@@ -303,48 +307,95 @@ struct RootView: View {
     }
 
     private var transcriptPane: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 6) {
-                QSEyebrow("Live transcript", color: palette.faint)
-                    .padding(.bottom, 6)
-                if recording.transcript.isEmpty {
-                    Text(recording.isRecording ? "Listening…" : "Tap the dot below to start a meeting.")
-                        .font(.atBody(14))
-                        .foregroundStyle(palette.mute)
+        // Anchor the bottom of the scrollable content so we can pin the
+        // viewport to the latest line as Moonshine emits new text. Without
+        // this the user has to manually swipe to catch up to the live edge,
+        // which defeats the point of an in-recording live transcript.
+        ScrollViewReader { proxy in
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 6) {
+                    QSEyebrow("Live transcript", color: palette.faint)
+                        .padding(.bottom, 6)
+                    if recording.transcript.isEmpty {
+                        Text(recording.isRecording ? "Listening…" : "Tap the dot below to start a meeting.")
+                            .font(.atBody(14))
+                            .foregroundStyle(palette.mute)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        // Two-tier render. Committed = full ink, weight-stable.
+                        // Tentative = dim/italic so the user reads it as "we're
+                        // still hearing this, may revise". Same isFinal flag the
+                        // Moonshine wrapper already exposes — the grounding-gate
+                        // analog for live ASR.
+                        (
+                            Text(recording.committedTranscript)
+                                .font(.atBody(15))
+                                .foregroundColor(palette.ink)
+                            + Text(recording.committedTranscript.isEmpty || recording.tentativeTranscript.isEmpty ? "" : " ")
+                            + Text(recording.tentativeTranscript)
+                                .font(.atBody(15).italic())
+                                .foregroundColor(palette.faint)
+                        )
+                        .lineSpacing(4)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    // Two-tier render. Committed = full ink, weight-stable.
-                    // Tentative = dim/italic so the user reads it as "we're
-                    // still hearing this, may revise". Same isFinal flag the
-                    // Moonshine wrapper already exposes — the grounding-gate
-                    // analog for live ASR.
-                    (
-                        Text(recording.committedTranscript)
-                            .font(.atBody(15))
-                            .foregroundColor(palette.ink)
-                        + Text(recording.committedTranscript.isEmpty || recording.tentativeTranscript.isEmpty ? "" : " ")
-                        + Text(recording.tentativeTranscript)
-                            .font(.atBody(15).italic())
-                            .foregroundColor(palette.faint)
-                    )
-                    .lineSpacing(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                if recording.isRecording {
-                    HStack(spacing: 8) {
-                        ATListeningDots(color: palette.faint)
-                        Text("listening")
-                            .font(.atBody(12))
-                            .italic()
-                            .foregroundStyle(palette.faint)
                     }
-                    .padding(.top, 4)
+                    if recording.isRecording {
+                        HStack(spacing: 8) {
+                            ATListeningDots(color: palette.faint)
+                            Text("listening")
+                                .font(.atBody(12))
+                                .italic()
+                                .foregroundStyle(palette.faint)
+                        }
+                        .padding(.top, 4)
+                    }
+                    // Invisible anchor at the very end of the content. We
+                    // pin scroll position to this so the live transcript
+                    // tail stays in view as new lines arrive.
+                    Color.clear
+                        .frame(height: 1)
+                        .id(transcriptTailAnchor)
                 }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 14)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 14)
+            .frame(maxHeight: .infinity)
+            // Auto-scroll on every transcript change. Why two onChange hooks
+            // instead of one: `committedTranscript` updates when Moonshine
+            // marks a line `isFinal=true` (sentence boundaries), while
+            // `tentativeTranscript` updates on the in-flight word stream.
+            // We want to follow both so the viewport tracks the latest
+            // syllable, not just the latest finalized sentence.
+            .onChange(of: recording.committedTranscript) { _, _ in
+                scrollTranscriptToTail(proxy: proxy)
+            }
+            .onChange(of: recording.tentativeTranscript) { _, _ in
+                scrollTranscriptToTail(proxy: proxy)
+            }
+            .onChange(of: recording.isRecording) { _, isOn in
+                if isOn { scrollTranscriptToTail(proxy: proxy, animated: false) }
+            }
         }
-        .frame(maxHeight: .infinity)
+    }
+
+    /// Stable identifier for the trailing anchor view inside `transcriptPane`.
+    /// Pulled out as a static so its identity is stable across SwiftUI
+    /// re-renders (using a literal in `.id(...)` would still work but having
+    /// a named constant makes the wiring obvious).
+    private var transcriptTailAnchor: String { "transcript-tail" }
+
+    private func scrollTranscriptToTail(proxy: ScrollViewProxy, animated: Bool = true) {
+        // The user complaint was "I have to swipe to catch up" — the cure is
+        // to push the scroll to the bottom anchor on every text mutation.
+        // We anchor to `.bottom` so the latest tentative word is exactly at
+        // the visible bottom edge, not somewhere mid-pane.
+        if animated {
+            withAnimation(.easeOut(duration: 0.18)) {
+                proxy.scrollTo(transcriptTailAnchor, anchor: .bottom)
+            }
+        } else {
+            proxy.scrollTo(transcriptTailAnchor, anchor: .bottom)
+        }
     }
 
     /// Stable key driven by pipeline stage so SwiftUI only re-fires
