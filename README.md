@@ -14,15 +14,13 @@
 
 <br />
 
-<!-- Status badges -->
+<!-- Status badges (one row; framework + LLM badges live in the built-with cluster below) -->
 
 [![iOS 26+](https://img.shields.io/badge/iOS-26%2B-1B1B1F?style=for-the-badge&logo=apple&logoColor=white)](https://developer.apple.com/ios/)
 [![Swift 6](https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white)](https://swift.org)
-[![SwiftUI](https://img.shields.io/badge/SwiftUI-2096FF?style=for-the-badge&logo=swift&logoColor=white)](https://developer.apple.com/swiftui/)
-[![Foundation Models](https://img.shields.io/badge/Foundation%20Models-2F7D55?style=for-the-badge&logo=apple&logoColor=white)](https://developer.apple.com/documentation/FoundationModels)
 [![Network zero](https://img.shields.io/badge/Network-zero-1B1B1F?style=for-the-badge&logo=apple&logoColor=white)](#privacy)
 [![License: MIT](https://img.shields.io/badge/License-MIT-FFC107?style=for-the-badge)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-33%20passing-2F7D55?style=for-the-badge&logo=swift&logoColor=white)](#tests)
+[![Tests](https://img.shields.io/badge/tests-39%20passing-2F7D55?style=for-the-badge&logo=swift&logoColor=white)](#tests)
 
 <br />
 
@@ -214,7 +212,7 @@ xcodebuild test -scheme Aftertalk \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-33 tests across 6 suites — VAD gating, sentence boundary detection, title sanitization, diarization cluster cleanup, BM25 tokenization, and RRF fusion. The diarization regression test explicitly encodes the ghost-cluster cycle bug that broke speaker labels under degraded acoustic conditions.
+39 tests across 7 suites — VAD gating, sentence boundary detection, title sanitization, diarization cluster cleanup, BM25 tokenization, RRF fusion, and global Q&A router (mention-count + overview deterministic intents). The diarization regression test explicitly encodes the ghost-cluster cycle bug that broke speaker labels under degraded acoustic conditions.
 
 <a id="status"></a>
 
