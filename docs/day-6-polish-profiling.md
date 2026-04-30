@@ -1,3 +1,7 @@
+> **Archived planning log.** This was a daily brief written before the work shipped. Some component picks (gte-small, sqlite-vec, target latency numbers) were superseded by the actual implementation. For the current architecture see [README.md](../README.md), [DECISIONS.md](../DECISIONS.md), and [THOUGHT-PROCESS.md](../THOUGHT-PROCESS.md).
+
+---
+
 # Day 6 — Polish, edge cases, profiling (Sat May 2)
 
 ## What you're building today

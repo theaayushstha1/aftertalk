@@ -1,3 +1,7 @@
+> **Archived planning log.** This was a daily brief written before the work shipped. Some component picks (gte-small, sqlite-vec, target latency numbers) were superseded by the actual implementation. For the current architecture see [README.md](../README.md), [DECISIONS.md](../DECISIONS.md), and [THOUGHT-PROCESS.md](../THOUGHT-PROCESS.md).
+
+---
+
 # AirCaps Brief → Aftertalk Feature Traceability
 
 Every requirement and constraint from the AirCaps take-home PDF maps to a feature ID in `PRD.md`. This file is the audit trail.

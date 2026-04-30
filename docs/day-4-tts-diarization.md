@@ -1,3 +1,7 @@
+> **Archived planning log.** This was a daily brief written before the work shipped. Some component picks (gte-small, sqlite-vec, target latency numbers) were superseded by the actual implementation. For the current architecture see [README.md](../README.md), [DECISIONS.md](../DECISIONS.md), and [THOUGHT-PROCESS.md](../THOUGHT-PROCESS.md).
+
+---
+
 # Day 4 — Kokoro neural TTS + Pyannote diarization (Thu Apr 30)
 
 ## What you're building today

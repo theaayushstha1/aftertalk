@@ -193,7 +193,7 @@ xcodebuild test -scheme Aftertalk \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-33 tests across 5 suites — VAD gating, sentence boundary detection, title sanitization, diarization cluster cleanup, and BM25 + RRF fusion. The diarization regression test explicitly encodes the ghost-cluster cycle bug that broke speaker labels under degraded acoustic conditions.
+33 tests across 6 suites — VAD gating, sentence boundary detection, title sanitization, diarization cluster cleanup, BM25 tokenization, and RRF fusion. The diarization regression test explicitly encodes the ghost-cluster cycle bug that broke speaker labels under degraded acoustic conditions.
 
 <a id="status"></a>
 
