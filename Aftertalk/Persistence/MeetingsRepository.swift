@@ -67,6 +67,105 @@ actor MeetingsRepository {
         try modelContext.save()
     }
 
+    // MARK: - Semantic index repair
+
+    /// Snapshot for the Settings repair UI. Counts chunks + summary
+    /// embeddings whose stored dim doesn't match the live model's dim
+    /// (degraded rows from a NLContextual fallback launch, or rows
+    /// written under an older model). The UI uses these counts to decide
+    /// whether to surface the repair affordance.
+    struct IndexHealth: Sendable {
+        var totalChunks: Int = 0
+        var degradedChunks: Int = 0
+        var totalSummaryEmbeddings: Int = 0
+        var degradedSummaryEmbeddings: Int = 0
+        var allHealthy: Bool { degradedChunks == 0 && degradedSummaryEmbeddings == 0 }
+    }
+
+    /// Survey current index state against the supplied target dimension
+    /// (the live embedding service's `dimension`). Cheap fetch — just
+    /// counts rows by dim equality.
+    func indexHealth(targetDim: Int) throws -> IndexHealth {
+        let chunks = try modelContext.fetch(FetchDescriptor<TranscriptChunk>())
+        let summaries = try modelContext.fetch(FetchDescriptor<MeetingSummaryEmbedding>())
+        var h = IndexHealth()
+        h.totalChunks = chunks.count
+        h.degradedChunks = chunks.filter { $0.embeddingDim != targetDim }.count
+        h.totalSummaryEmbeddings = summaries.count
+        h.degradedSummaryEmbeddings = summaries.filter { $0.embeddingDim != targetDim }.count
+        return h
+    }
+
+    /// Re-embed every chunk + summary whose stored dim doesn't match
+    /// `targetDim`, using the supplied embedding service. Streams progress
+    /// callbacks so the Settings UI can render a determinate progress bar.
+    /// Returns counts of (chunksRepaired, summariesRepaired).
+    ///
+    /// Why this exists: meetings recorded under the NLContextual fallback
+    /// path (NoOp embedding service) carry `embeddingDim = 0` and are
+    /// invisible to semantic retrieval. Once the live device gets the
+    /// system asset, the embeddings can be regenerated from the stored
+    /// chunk text + structured summary without re-running ASR or
+    /// diarization. Same flow for any future model swap (gte-small →
+    /// 384-dim, etc.) — old rows can be re-encoded in place.
+    func repairSemanticIndex(
+        embeddings: any EmbeddingService,
+        targetDim: Int,
+        progress: ((Int, Int) -> Void)? = nil
+    ) async throws -> (chunks: Int, summaries: Int) {
+        // Chunks first — the larger of the two collections, so progress
+        // reports don't jump straight from 0% to 95%.
+        let chunks = try modelContext.fetch(FetchDescriptor<TranscriptChunk>())
+        let degradedChunks = chunks.filter { $0.embeddingDim != targetDim }
+        var summaries = try modelContext.fetch(FetchDescriptor<MeetingSummaryEmbedding>())
+        let degradedSummaries = summaries.filter { $0.embeddingDim != targetDim }
+        let total = degradedChunks.count + degradedSummaries.count
+        var done = 0
+
+        for chunk in degradedChunks {
+            // Use the chunk's own text. We don't reconstruct the original
+            // `(speaker) text` shape here because the speaker info is
+            // already on the chunk model — embedding plain text matches
+            // the new `buildEmbedText` shape.
+            let text: String
+            if let s = chunk.speakerName, !s.isEmpty {
+                text = "(\(s)) \(chunk.text)"
+            } else {
+                text = chunk.text
+            }
+            let v: [Float]
+            do {
+                v = try await embeddings.embed(text)
+            } catch {
+                // Service still not working — bail and let the user retry.
+                throw error
+            }
+            chunk.embedding = SwiftDataVectorStore.encode(v)
+            chunk.embeddingDim = v.count
+            done += 1
+            progress?(done, total)
+        }
+
+        for row in degradedSummaries {
+            // We don't have a one-line "summary text" stored on the row,
+            // so re-embed the meeting title as a fallback. Better than
+            // leaving dim=0; if the user wants the full summary embed,
+            // the next pipeline run does that work. The repair tool's
+            // job is "make these rows score against the live query
+            // dim," not "achieve identical embeddings to a re-record."
+            guard let meeting = try? fetchMeeting(row.meetingId) else { continue }
+            let v = try await embeddings.embed(meeting.title)
+            row.embedding = SwiftDataVectorStore.encode(v)
+            row.embeddingDim = v.count
+            done += 1
+            progress?(done, total)
+        }
+        // Re-fetch summaries to pick up changes for the return count.
+        summaries = try modelContext.fetch(FetchDescriptor<MeetingSummaryEmbedding>())
+        try modelContext.save()
+        return (degradedChunks.count, degradedSummaries.count)
+    }
+
     /// Persist the per-meeting speaker roster produced by Pyannote diarization.
     /// Each entry maps a stable `speakerId` to a UI display name + color +
     /// 256-dim WeSpeaker centroid (mean of that speaker's segment embeddings).

@@ -95,7 +95,15 @@ final class QAOrchestrator {
     /// scores). 0.4 was rejecting real questions and producing the "single
     /// disclaimer sentence and stop" symptom. Lowered to 0.22 — well below
     /// every legitimate match observed and still safely above noise.
-    private let groundingThreshold: Float = 0.22
+    /// Lowered from 0.22 → 0.10 because `NLContextualEmbedding`'s cosine
+    /// similarity sits in a tighter range than gte-small (the embedding
+    /// the threshold was originally tuned against): related-topic pairs
+    /// score ~0.30-0.50 instead of ~0.50-0.80, and broad-question pairs
+    /// can fall to ~0.15. The previous 0.22 threshold caused the gate to
+    /// fire on legitimate "what did we discuss" questions. The soft-gate
+    /// changes in `runAsk` and `runAskGlobal` are the real fix; this
+    /// just makes the threshold honest about what NLContextual produces.
+    private let groundingThreshold: Float = 0.10
 
     /// Hard cap on spoken sentences. The brief asks for ~3-5 sentence answers,
     /// but soft-wraps + commas can split a single thought into multiple emitted
@@ -297,6 +305,16 @@ final class QAOrchestrator {
         return await task.value
     }
 
+    /// Char count under which we skip RAG entirely and put the whole
+    /// transcript + summary in the LLM prompt. ~10 000 chars ≈ ~2500
+    /// tokens — comfortably below Foundation Models' 4096 cap once the
+    /// system prompt (~250) and generation reserve (~1200) are subtracted.
+    /// Most 5-7 minute recordings fit easily; longer meetings fall back
+    /// to the retrieval path. Char count is used instead of
+    /// `Session.tokenCount(_:)` to avoid a synchronous tokenization call
+    /// before we even know which path we're taking.
+    private static let fullTranscriptCharBudget = 10_000
+
     private func runAsk(question: String, in meeting: Meeting, releasedAt: ContinuousClock.Instant? = nil) async -> QAResult? {
         let trimmed = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -305,6 +323,25 @@ final class QAOrchestrator {
         liveAnswer = ""
         didBargeIn = false
         let totalStart = ContinuousClock.now
+
+        // Full-transcript path. When the recording is short enough that
+        // its entire transcript fits in one Foundation Models prompt with
+        // headroom, retrieval is pure ceremony — and a failure surface.
+        // Skip it. The LLM gets the full transcript verbatim plus the
+        // structured summary, so every demo question on a typical 5-7
+        // minute meeting becomes answerable from the actual recording
+        // instead of hostage to embedding similarity. Longer meetings
+        // fall through to the retrieval path below.
+        let transcriptCharCount = meeting.fullTranscript.count
+        if transcriptCharCount > 0, transcriptCharCount <= Self.fullTranscriptCharBudget {
+            log.info("runAsk: using full-transcript path (transcript=\(transcriptCharCount, privacy: .public) chars)")
+            return await runAskFullTranscript(
+                question: trimmed,
+                meeting: meeting,
+                totalStart: totalStart,
+                releasedAt: releasedAt
+            )
+        }
 
         let retrieval: RetrievalResult
         do {
@@ -319,10 +356,17 @@ final class QAOrchestrator {
 
         log.info("retrieve: chunks=\(retrieval.chunks.count, privacy: .public) topScore=\(retrieval.topScore, privacy: .public) threshold=\(self.groundingThreshold, privacy: .public)")
 
-        // Grounding gate. If nothing meaningful came back, skip the LLM and
-        // speak a fixed disclaimer. Cheaper, faster, no hallucination risk.
-        if retrieval.isEmpty || retrieval.topScore < groundingThreshold {
-            log.warning("grounding gate fired (topScore=\(retrieval.topScore, privacy: .public) < \(self.groundingThreshold, privacy: .public)) — speaking disclaimer instead of running LLM")
+        // Soft grounding gate. We only fire the disclaimer when retrieval
+        // came up empty AND there's no structured summary to fall back on.
+        // The previous hard gate (`topScore < threshold` → disclaimer) was
+        // wrong for broad questions like "what did we discuss?" — it
+        // refused before the LLM ever saw the structured summary that
+        // already contains the answer. Now: if a summary exists, always
+        // call the LLM with summary + best-effort chunks; only refuse on
+        // a meeting that genuinely has no structured context yet.
+        let hasSummary = (meeting.summary != nil)
+        if retrieval.isEmpty && !hasSummary {
+            log.warning("grounding gate fired (no chunks AND no summary) — speaking disclaimer")
             let disclaimer = "I don't have that in the meeting transcripts."
             stage = .speaking
             liveAnswer = disclaimer
@@ -472,6 +516,119 @@ final class QAOrchestrator {
         )
     }
 
+    /// Full-transcript Q&A — used when the meeting's transcript fits inside
+    /// Foundation Models' prompt budget. Skips retrieval entirely and
+    /// hands the LLM the full transcript + structured summary. The LLM
+    /// then has every fact in the recording instead of being limited to
+    /// whatever embedding similarity surfaced. For ≤7 minute meetings
+    /// this turns RAG-related failure modes ("I don't have that," weird
+    /// chunks, low recall on broad questions) into a non-issue —
+    /// retrieval doesn't run, so it can't be wrong. Citations come back
+    /// empty because there are no chunk-level pointers; the chat bubble
+    /// renders without citation pills, which is the honest signal that
+    /// "everything came from the transcript whole" not "from this
+    /// specific chunk."
+    private func runAskFullTranscript(
+        question: String,
+        meeting: Meeting,
+        totalStart: ContinuousClock.Instant,
+        releasedAt: ContinuousClock.Instant?
+    ) async -> QAResult? {
+        let session = LanguageModelSession(instructions: Self.systemInstructions)
+        do {
+            try checkAvailability()
+        } catch {
+            stage = .failed("\(error)")
+            return nil
+        }
+
+        let overviewBlock = Self.overview(for: meeting).map { "Meeting overview:\n\($0)\n\n" } ?? ""
+        let prompt = """
+        Question: \(question)
+
+        \(overviewBlock)Full meeting transcript:
+
+        \(meeting.fullTranscript)
+        """
+
+        stage = .generating
+        var detector = SentenceBoundaryDetector()
+        var lastSnapshot = ""
+        var ttfswStart: ContinuousClock.Instant? = releasedAt
+        var ttfswMillis: Double?
+        var spokenCount = 0
+
+        do {
+            let stream = session.streamResponse(to: prompt)
+            outer: for try await snapshot in stream {
+                if Task.isCancelled { break }
+                let text = snapshot.content
+                guard text != lastSnapshot else { continue }
+                lastSnapshot = text
+                liveAnswer = text
+                if ttfswStart == nil { ttfswStart = .now }
+
+                let sentences = detector.feed(text)
+                if !sentences.isEmpty, stage != .speaking {
+                    stage = .speaking
+                    await enterSpeakingSession()
+                    armBargeIn()
+                }
+                for sentence in sentences {
+                    if Task.isCancelled { break outer }
+                    if spokenCount >= maxSpokenSentences { break }
+                    speakChained(sentence)
+                    spokenCount += 1
+                    if ttfswMillis == nil, let start = ttfswStart {
+                        ttfswMillis = start.duration(to: .now).aftertalkMillis
+                    }
+                }
+            }
+            if !Task.isCancelled, spokenCount < maxSpokenSentences {
+                let trailing = detector.finalize(lastSnapshot)
+                for sentence in trailing {
+                    if spokenCount >= maxSpokenSentences { break }
+                    if !sentence.isEmpty, stage != .speaking {
+                        stage = .speaking
+                        await enterSpeakingSession()
+                        armBargeIn()
+                    }
+                    speakChained(sentence)
+                    spokenCount += 1
+                    if ttfswMillis == nil, let start = ttfswStart {
+                        ttfswMillis = start.duration(to: .now).aftertalkMillis
+                    }
+                }
+            }
+        } catch {
+            log.error("full-transcript generate failed: \(String(describing: error), privacy: .public)")
+            stage = .failed("generate: \(error)")
+            return nil
+        }
+
+        if Task.isCancelled {
+            await tts.stop()
+            liveAnswer = ""
+            stage = .idle
+            return nil
+        }
+
+        await awaitSpeakChain()
+        bargeIn.stop()
+
+        let elapsed = totalStart.duration(to: .now).aftertalkMillis
+        liveAnswer = ""
+        stage = .idle
+        return QAResult(
+            question: question,
+            answer: lastSnapshot,
+            citations: [],  // no chunk-level retrieval hits in this path
+            groundedByLLM: true,
+            ttfswMillis: ttfswMillis,
+            totalMillis: elapsed
+        )
+    }
+
     private func runAskGlobal(question: String, repository: MeetingsRepository, releasedAt: ContinuousClock.Instant? = nil) async -> QAResult? {
         let trimmed = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -532,8 +689,29 @@ final class QAOrchestrator {
 
         log.info("global retrieve: chunks=\(retrieval.chunks.count, privacy: .public) topScore=\(retrieval.topScore, privacy: .public) threshold=\(self.groundingThreshold, privacy: .public)")
 
-        if retrieval.isEmpty || retrieval.topScore < groundingThreshold {
-            log.warning("global grounding gate fired (topScore=\(retrieval.topScore, privacy: .public))")
+        // Pull baseline meeting summaries up front so we always have
+        // structured context to hand the LLM, even when chunk retrieval
+        // misses. Previously the overview block was assembled only from
+        // meetings that retrieval already hit — if retrieval missed,
+        // the LLM saw zero structured context, and the gate fell through
+        // to the disclaimer. Now we always include a recent-meetings
+        // baseline; retrieval just sharpens which meetings are featured.
+        let allHeadersForOverview: [MeetingHeader]
+        do {
+            allHeadersForOverview = try await repository.allMeetingHeaders()
+        } catch {
+            log.warning("global header fetch failed: \(String(describing: error), privacy: .public) — proceeding without baseline overview")
+            allHeadersForOverview = []
+        }
+
+        // Soft grounding gate. We only refuse when retrieval missed AND
+        // we have zero meeting summaries to fall back on (genuinely empty
+        // device). Otherwise the LLM gets the recent-meetings overview
+        // and decides whether the question is answerable from that —
+        // exactly what a senior assistant would do given the same
+        // context.
+        if retrieval.isEmpty && allHeadersForOverview.isEmpty {
+            log.warning("global grounding gate fired (no chunks AND no summaries) — speaking disclaimer")
             let disclaimer = "I don't have that across your meetings yet."
             stage = .speaking
             liveAnswer = disclaimer
@@ -562,13 +740,38 @@ final class QAOrchestrator {
         let citedMeetingIds = retrieval.chunks
             .map(\.meetingId)
             .filter { seenIds.insert($0).inserted }
+        // Merge retrieval-cited meetings with the recent-meetings baseline
+        // so the overview block always contains *something*. Retrieved
+        // meetings come first (they're score-ranked); recent meetings
+        // backfill up to a small cap so the multi-meeting block doesn't
+        // explode the token budget.
+        let baselineHeaders = Array(allHeadersForOverview.prefix(5))
+        var headerIndex: [UUID: MeetingHeader] = [:]
+        for h in baselineHeaders { headerIndex[h.id] = h }
         let headers: [MeetingHeader]
-        do {
-            headers = try await repository.meetingHeaders(for: citedMeetingIds)
-        } catch {
-            log.error("header fetch failed: \(String(describing: error), privacy: .public)")
-            stage = .failed("headers: \(error)")
-            return nil
+        if citedMeetingIds.isEmpty {
+            headers = baselineHeaders
+        } else {
+            do {
+                let cited = try await repository.meetingHeaders(for: citedMeetingIds)
+                for h in cited { headerIndex[h.id] = h }
+                // Cited meetings first (preserve score order), then
+                // baseline backfill for any not already in.
+                var ordered: [MeetingHeader] = []
+                var seen: Set<UUID> = []
+                for id in citedMeetingIds {
+                    if let h = headerIndex[id], seen.insert(id).inserted {
+                        ordered.append(h)
+                    }
+                }
+                for h in baselineHeaders where seen.insert(h.id).inserted {
+                    ordered.append(h)
+                }
+                headers = ordered
+            } catch {
+                log.error("header fetch failed: \(String(describing: error), privacy: .public)")
+                headers = baselineHeaders
+            }
         }
         let titlesById = Dictionary(uniqueKeysWithValues: headers.map { ($0.id, $0.title) })
 
@@ -600,12 +803,20 @@ final class QAOrchestrator {
 
         let overviewBlock = Self.globalOverview(headers: headers)
         let overviewSection = overviewBlock.isEmpty ? "" : "Meeting overviews:\n\(overviewBlock)\n\n"
+        let excerptsSection: String
+        if renderedLines.isEmpty {
+            // Retrieval missed but we have summaries. Tell the LLM
+            // explicitly so it doesn't hallucinate excerpts that aren't
+            // there — answer from the overview block alone or refuse
+            // honestly.
+            excerptsSection = "No specific excerpts retrieved. Answer from the overviews above; if they don't contain the answer, refuse honestly per your instructions.\n"
+        } else {
+            excerptsSection = "Excerpts (sorted by relevance, across multiple meetings):\n\n\(renderedLines.joined(separator: "\n\n"))"
+        }
         let prompt = """
         Question: \(trimmed)
 
-        \(overviewSection)Excerpts (sorted by relevance, across multiple meetings):
-
-        \(renderedLines.joined(separator: "\n\n"))
+        \(overviewSection)\(excerptsSection)
         """
 
         stage = .generating

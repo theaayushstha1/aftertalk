@@ -72,26 +72,31 @@ actor PyannoteDiarizationService: DiarizationService {
 
         // Diarization tuning. FluidAudio docs: "Lower = more speakers."
         //
-        // History: the default `0.7` collapses similar-timbre voices captured
-        // through the same acoustic path (podcast → phone mic). We pushed to
-        // `0.5` to recover the second host on those demos but found that
-        // shifting the boundary that far also splits genuine same-speaker
-        // turns into 1-2 segment ghost clusters at a much higher rate. Net
-        // experience was "too many speakers" instead of "too few."
+        // History:
+        //  - Default `0.7` collapsed similar-timbre voices captured through
+        //    the same acoustic path (podcast → phone mic) into one cluster.
+        //    Field test: "two podcast hosts, only Speaker_1 detected."
+        //  - Pushed to `0.5` to recover the quieter host. Worked but spawned
+        //    1-2 segment ghost clusters from same-voice embedding drift.
+        //  - Pushed to `0.6` as an empirical midpoint. Field test on a
+        //    speaker-played podcast: 95% of segments collapsed to
+        //    Speaker_1; only the trailing sentence got Speaker_2. Net was
+        //    a worse user experience than 0.5.
         //
-        // `0.6` is the empirical sweet spot — still more permissive than
-        // FluidAudio's default so a quieter podcast co-host still gets its
-        // own cluster, but the ghost rate drops dramatically. Real ghosts
-        // that survive at 0.6 are caught by `collapseSpuriousClusters` (≤2
-        // segments AND <5% airtime → merged into nearest centroid).
+        // Reverted to `0.5` because the post-merge cleanup (≤2 segments
+        // AND <5% airtime → merge to nearest non-ghost) plus the cycle-bug
+        // fix in `collapseSpuriousClusters` is the right place to handle
+        // ghost clusters. Letting threshold permit the over-segmentation
+        // and trusting the cleanup to remove ghosts beats trying to find
+        // a single threshold that satisfies "split similar voices" AND
+        // "don't drift on same voice" — those are competing constraints.
         //
         // `minSpeechDuration=0.5` (vs default 1.0) preserves the original
         // intent — short backchannels and 1-2 word confirmations from a
         // quieter host still contribute embeddings — without admitting
-        // sub-half-second blips that the prior 0.4 setting was promoting
-        // into spurious "speakers."
+        // sub-half-second blips as standalone "speakers."
         var cfg = DiarizerConfig.default
-        cfg.clusteringThreshold = 0.6
+        cfg.clusteringThreshold = 0.5
         cfg.minSpeechDuration = 0.5
         let manager = DiarizerManager(config: cfg)
         // initialize(models:) is synchronous + consuming. Do NOT `await` it.

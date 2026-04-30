@@ -219,38 +219,35 @@ final class QuestionASR {
         }
     }
 
-    /// Bridge from the audio capture tap into Moonshine. Uses the same
-    /// `EnergyVADGate` as the meeting recorder but tuned for short
-    /// hold-to-talk Q&A: longer hold-tail (500 ms vs 300 ms) so a soft
-    /// trailing consonant on a 4-word question doesn't get clipped, and
-    /// the pre-roll is left at 200 ms so the first phoneme survives the
-    /// ~50 ms gap between hold-press and the audio engine going live.
+    /// Bridge from the audio capture tap into Moonshine.
+    ///
+    /// The meeting-recording pump runs every chunk through `EnergyVADGate`
+    /// to shed silence frames so medium streaming holds real-time on
+    /// continuous audio. **For hold-to-talk Q&A we deliberately skip the
+    /// gate** — the user holding the button IS the voice-activity signal
+    /// we'd otherwise infer from RMS. Gating again was double-counting,
+    /// and on a quiet speaker (or a question that starts before the gate
+    /// crosses the speech threshold) it clipped real audio. Forwarding
+    /// every sample to Moonshine costs nothing on a sub-10s utterance and
+    /// gives the encoder maximum context to work with.
+    ///
+    /// `appendBypassingGate` is kept for symmetry with the trailing-silence
+    /// bookend `QuestionASR.stop` pushes; in the no-gate world it's just a
+    /// passthrough, but the named hatch keeps the call site honest about
+    /// what's being fed where.
     private final class Pump: ASRSamplePump, @unchecked Sendable {
         private let streamer: MoonshineStreamer
-        private let gate: EnergyVADGate
         init(streamer: MoonshineStreamer) {
             self.streamer = streamer
-            self.gate = EnergyVADGate(
-                speechThresholdDb: -38,
-                silenceThresholdDb: -50,
-                holdSeconds: 0.50,
-                preRollSeconds: 0.20
-            )
         }
         func append(samples: [Float], sampleRate: Int32) {
-            let forwarded = gate.gate(samples: samples)
-            if !forwarded.isEmpty {
-                streamer.append(samples: forwarded, sampleRate: sampleRate)
-            }
+            streamer.append(samples: samples, sampleRate: sampleRate)
         }
-        /// Push samples straight to Moonshine, bypassing the VAD gate. Used
-        /// by `QuestionASR.stop` to hand the encoder a trailing-silence
-        /// bookend even though the gate would normally drop pure silence.
-        /// Without this hatch the bookend never reaches the encoder and
-        /// `LineCompleted` never fires for the final words.
         func appendBypassingGate(samples: [Float], sampleRate: Int32) {
             streamer.append(samples: samples, sampleRate: sampleRate)
         }
-        func resetGate() { gate.reset() }
+        /// No-op — kept for API parity with the meeting pump. Q&A's pump
+        /// has no per-recording state to reset because there's no gate.
+        func resetGate() { /* no gate; nothing to reset */ }
     }
 }

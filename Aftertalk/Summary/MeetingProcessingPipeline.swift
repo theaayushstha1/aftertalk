@@ -485,11 +485,21 @@ final class MeetingProcessingPipeline {
     }
 
     static func buildEmbedText(meetingTitle: String, draft: ChunkDraft) -> String {
-        let titleSlice = String(meetingTitle.prefix(60))
+        // Embed the chunk text mostly as-is. The previous shape prepended
+        // `[Meeting: ...] [Speaker: ...]` which dominated the embedding
+        // for short chunks (NLContextual averages token vectors, so a
+        // long chrome prefix dilutes the actual content). Now the embed
+        // text is the chunk text itself, with an optional speaker prefix
+        // as a parenthetical when present — short, semantic, doesn't
+        // smear the cosine signal. Meeting title isn't needed here:
+        // retrieval already filters by `meetingId` for per-meeting Q&A,
+        // and global Q&A's title matching uses the structured-summary
+        // overview, not embedding similarity, to identify which meetings
+        // to feature.
         if let speaker = draft.speakerName, !speaker.isEmpty {
-            return "[Meeting: \(titleSlice)] [Speaker: \(speaker)] \(draft.text)"
+            return "(\(speaker)) \(draft.text)"
         }
-        return "[Meeting: \(titleSlice)] \(draft.text)"
+        return draft.text
     }
 
     static func buildSummaryEmbedText(title: String, summary: MeetingSummary) -> String {
