@@ -51,7 +51,7 @@ final class FluidAudioParakeetTranscriber: BatchASRService, @unchecked Sendable 
         // AsrManager seeds its own state via the convenience init when models
         // are passed in; nothing else to do until `transcribe(...)`.
         self.asrManager = manager
-        logger.info("Parakeet warm: model directory=\(self.modelDirectory.path, privacy: .public)")
+        logger.info("Parakeet warm: model directory=\(self.modelDirectory.lastPathComponent, privacy: .public)")
         #else
         throw BatchASRError.modelMissing("FluidAudio module not available")
         #endif

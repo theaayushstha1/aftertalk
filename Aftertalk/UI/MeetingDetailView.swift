@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// Quiet Studio detail screen. Editorial hero (eyebrow + 36pt title +
 /// stacked-avatar speaker row + meta tags), then a hairline tab strip with
@@ -483,19 +484,31 @@ struct MeetingDetailView: View {
                             .id(c.id)
                     }
                 }
-                .onChange(of: pendingScrollChunkId) { _, newValue in
-                    guard let target = newValue else { return }
-                    withAnimation(.easeInOut(duration: 0.35)) {
-                        proxy.scrollTo(target, anchor: .top)
+                // Use `.task(id:)` instead of `.onChange`. When the user taps
+                // a citation in chat, the close-chat / set-tab / set-id
+                // happens before the transcript tab is mounted — and a
+                // freshly-mounted view doesn't get an `.onChange` callback
+                // for state that already changed. `.task(id:)` fires on
+                // every appearance with the current value, so the scroll
+                // happens reliably whether the tab was already open or just
+                // mounted.
+                .task(id: pendingScrollChunkId) {
+                    guard let target = pendingScrollChunkId else { return }
+                    // One frame so the LazyVStack lays out chunks.
+                    try? await Task.sleep(for: .milliseconds(80))
+                    if Task.isCancelled { return }
+                    await MainActor.run {
+                        withAnimation(.easeInOut(duration: 0.35)) {
+                            proxy.scrollTo(target, anchor: .center)
+                        }
+                        highlightedChunkId = target
+                        pendingScrollChunkId = nil
                     }
-                    highlightedChunkId = target
-                    pendingScrollChunkId = nil
-                    Task {
-                        try? await Task.sleep(for: .seconds(1.6))
-                        await MainActor.run {
-                            if highlightedChunkId == target {
-                                highlightedChunkId = nil
-                            }
+                    try? await Task.sleep(for: .seconds(1.8))
+                    if Task.isCancelled { return }
+                    await MainActor.run {
+                        if highlightedChunkId == target {
+                            highlightedChunkId = nil
                         }
                     }
                 }
@@ -553,7 +566,13 @@ struct MeetingDetailView: View {
     private func copyTranscript() {
         let text = transcriptCopyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        UIPasteboard.general.string = text
+        UIPasteboard.general.setItems(
+            [[UTType.plainText.identifier: text]],
+            options: [
+                .localOnly: true,
+                .expirationDate: Date().addingTimeInterval(10 * 60)
+            ]
+        )
         transcriptCopied = true
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.2))

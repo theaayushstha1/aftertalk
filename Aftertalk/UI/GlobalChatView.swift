@@ -270,15 +270,43 @@ struct GlobalChatView: View {
         "Who has open action items in the past month?",
     ]
 
+    @ViewBuilder
     private func exemplarRow(_ q: String, divider: Bool) -> some View {
-        VStack(spacing: 0) {
-            if divider { QSDivider() }
-            Text("\u{201C}\(q)\u{201D}")
-                .font(.atSerif(14.5, weight: .regular))
-                .italic()
-                .foregroundStyle(palette.ink)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 12)
+        if let ctx = qaContext {
+            // Tap-to-ask. Mirrors ChatThreadView. Suggested questions used to
+            // be static text — now they fire through the same persist + ask
+            // pipeline as the typed input.
+            Button {
+                Task { await submitTypedQuestion(ctx: ctx, text: q) }
+            } label: {
+                VStack(spacing: 0) {
+                    if divider { QSDivider() }
+                    HStack(alignment: .center, spacing: 12) {
+                        Text("\u{201C}\(q)\u{201D}")
+                            .font(.atSerif(14.5, weight: .regular))
+                            .italic()
+                            .foregroundStyle(palette.ink)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(palette.faint)
+                    }
+                    .padding(.vertical, 12)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!ctx.semanticQAAvailable || asking || holding)
+        } else {
+            VStack(spacing: 0) {
+                if divider { QSDivider() }
+                Text("\u{201C}\(q)\u{201D}")
+                    .font(.atSerif(14.5, weight: .regular))
+                    .italic()
+                    .foregroundStyle(palette.ink)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 12)
+            }
         }
     }
 
@@ -319,6 +347,19 @@ struct GlobalChatView: View {
             }
             .onChange(of: holding) { _, on in
                 if on { withAnimation { proxy.scrollTo("listening", anchor: .bottom) } }
+            }
+            // Stream-time auto-scroll. See ChatThreadView for the rationale —
+            // without these the user only sees the answer once playback ends.
+            .onChange(of: ctx.orchestrator.liveAnswer) { _, _ in
+                guard !ctx.orchestrator.liveAnswer.isEmpty else { return }
+                withAnimation(.easeOut(duration: 0.18)) {
+                    proxy.scrollTo("streaming", anchor: .bottom)
+                }
+            }
+            .onChange(of: isThinking(ctx: ctx)) { _, thinking in
+                if thinking {
+                    withAnimation { proxy.scrollTo("thinking", anchor: .bottom) }
+                }
             }
         }
         .frame(maxHeight: .infinity)
@@ -713,9 +754,13 @@ struct GlobalChatView: View {
         }
     }
 
-    private func submitTypedQuestion(ctx: QAContext) async {
-        let question = typedQuestionTrimmed
-        guard canSubmitTypedQuestion(ctx: ctx), !question.isEmpty else { return }
+    private func submitTypedQuestion(ctx: QAContext, text: String? = nil) async {
+        // `text == nil` submits whatever's currently in the typed field
+        // (Return / send button). Passing an explicit string lets the
+        // suggested-question rows reuse the exact same persist + ask path.
+        let raw = text ?? typedQuestion
+        let question = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ctx.semanticQAAvailable, !asking, !holding, !question.isEmpty else { return }
 
         typedQuestion = ""
         typedQuestionFocused = false

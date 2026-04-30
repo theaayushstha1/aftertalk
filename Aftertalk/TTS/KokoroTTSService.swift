@@ -251,13 +251,35 @@ actor KokoroTTSService: TTSService {
             return samples
         }
 
-        let leadingKeep = Int(0.035 * 24_000.0)
-        let trailingKeep = Int(0.075 * 24_000.0)
+        // Halved from the original 35 ms / 75 ms after the Karpathy-clip test
+        // surfaced audible "chunking" — every Kokoro synth ships with a small
+        // silence pad and back-to-back scheduling stacks those pads into a
+        // perceptible breath between sentences. 22 ms / 45 ms is enough to
+        // preserve the natural sentence-end fall without inflating the gap.
+        let leadingKeep = Int(0.022 * 24_000.0)
+        let trailingKeep = Int(0.045 * 24_000.0)
         let start = max(0, firstSpeech - leadingKeep)
         let end = min(samples.count - 1, lastSpeech + trailingKeep)
         var out = Array(samples[start...end])
-        applyEdgeFade(to: &out, frames: Int(0.008 * 24_000.0))
+        preventOutputClipping(in: &out, ceiling: 0.98)
+        // 4 ms fade — enough to mask the abrupt amplitude cut at the trim
+        // boundary, short enough to be inaudible inside the seam.
+        applyEdgeFade(to: &out, frames: Int(0.004 * 24_000.0))
         return out
+    }
+
+    private static func preventOutputClipping(in samples: inout [Float], ceiling: Float) {
+        guard ceiling > 0 else { return }
+        var peak: Float = 0
+        for sample in samples {
+            peak = max(peak, abs(sample))
+        }
+        guard peak > ceiling else { return }
+
+        let gain = ceiling / peak
+        for i in samples.indices {
+            samples[i] *= gain
+        }
     }
 
     private static func applyEdgeFade(to samples: inout [Float], frames requestedFrames: Int) {

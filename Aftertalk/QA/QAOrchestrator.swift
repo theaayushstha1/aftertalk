@@ -88,9 +88,14 @@ final class QAOrchestrator {
     private var pendingSpeechText: String = ""
 
     /// Keep chunks under the Kokoro 5s graph budget, but avoid dispatching
-    /// tiny one-sentence clips unless the stream finishes there.
-    private static let smoothSpeechTargetChars = 95
-    private static let smoothSpeechMaxChars = 135
+    /// tiny one-sentence clips unless the stream finishes there. Bumped from
+    /// 95/135 → 130/185 after on-device testing: shorter chunks made the
+    /// playback sound visibly "chunked" because every Kokoro synth has a
+    /// small leading + trailing silence pad and back-to-back scheduling
+    /// stacks those pads. ~130 chars covers two short sentences in one
+    /// inference, halving the seam count without exceeding the graph budget.
+    private static let smoothSpeechTargetChars = 130
+    private static let smoothSpeechMaxChars = 185
 
     /// Cosine similarity floor below which we treat the question as off-topic
     /// and refuse to call the LLM (CS Navigator grounding-gate pattern). 0.4
@@ -125,11 +130,12 @@ final class QAOrchestrator {
     - If only one meeting actually contains the answer, just answer naturally — do NOT enumerate other meetings or hint that you looked at them. Naming meetings the user did not ask about feels like noise.
     - When the question references a specific meeting (a topic, a speaker, a date), keep the answer scoped to that meeting unless other meetings clearly pertain.
     - Use the "Meeting overviews" block as the trusted backbone — it lists each meeting's topics, decisions, action items. Use the "Excerpts" for specifics and grounding.
+    - If any overview or excerpt is relevant, answer from that context even when the answer is partial. Do not refuse just because every meeting is not represented in the retrieved excerpts.
     - Length: three to five short sentences of plain prose, around 12 to 18 words each. The answer is read aloud sentence by sentence — long run-on sentences sound stilted and break the speech rhythm. No bullet points, no numbered lists, no dashes, no asterisks, no markdown.
     - Speakers are not pre-labeled. Names from the transcript may be misheard — say "the team" or "two people" rather than guessing if you're unsure.
     - Never invent decisions, dates, owners, or meetings that are not in the context.
     - Do not preface with "Based on the meetings" or "According to the context." Just answer.
-    - If the overviews and excerpts together don't answer the question, reply with exactly: I don't have that across your meetings yet.
+    - If the context does not contain the exact fact requested, say that specific fact was not found, then mention the closest related context if it is useful. The app handles truly empty context before you are called.
     """
 
     private static let systemInstructions = """
@@ -184,7 +190,7 @@ final class QAOrchestrator {
     /// window. The callback is awaited in-line so the auto-rearm flow runs
     /// after the speech chain has fully torn down — re-arming concurrently
     /// with `cancel()` would race the AudioSessionManager flip from
-    /// `.voiceChat` (TTS) back to `.measurement` (clean ASR).
+    /// spoken-audio playback back to `.measurement` (clean ASR).
     private func armBargeIn() {
         // Auto barge-in is intentionally disabled. The energy-based gate at
         // -32 dB / 180 ms hold misfires on Kokoro tail bleed past Apple's AEC
@@ -205,15 +211,15 @@ final class QAOrchestrator {
         didBargeIn = false
     }
 
-    /// Flip the audio session from clean-listening (`.measurement`) to
-    /// voice-chat with AEC. Called the moment we're about to speak so the
-    /// user heard a clean mic during the question and gets AEC during the
-    /// answer (so barge-in can ignore Kokoro's playback bleed).
+    /// Flip the audio session from clean-listening (`.measurement`) to a
+    /// high-quality spoken-audio playback route. Auto barge-in is disabled,
+    /// so keeping `.voiceChat` AEC active during Kokoro playback just adds
+    /// phone-call DSP artifacts without giving us interruption behavior.
     private func enterSpeakingSession() async {
         do {
-            try await AudioSessionManager.shared.configureForVoiceChat()
+            try await AudioSessionManager.shared.configureForSpeechPlayback()
         } catch {
-            log.warning("session flip to voiceChat failed: \(String(describing: error), privacy: .public) — continuing with current mode")
+            log.warning("session flip to speech playback failed: \(String(describing: error), privacy: .public) — continuing with current mode")
         }
     }
 
@@ -493,8 +499,7 @@ final class QAOrchestrator {
                     // text — the chat bubble shows the full answer even after
                     // the speaker goes quiet.
                     if spokenCount >= maxSpokenSentences { break }
-                    let preview = sentence.prefix(48)
-                    log.info("speak[\(spokenCount + 1, privacy: .public)/\(self.maxSpokenSentences, privacy: .public)] chain: \(preview, privacy: .public)")
+                    log.info("speak[\(spokenCount + 1, privacy: .public)/\(self.maxSpokenSentences, privacy: .public)] chain: chars=\(sentence.count, privacy: .public)")
                     let didDispatch = speakChained(sentence)
                     spokenCount += 1
                     if ttfswMillis == nil, didDispatch, let start = ttfswStart {
@@ -509,8 +514,7 @@ final class QAOrchestrator {
                 }
                 for sentence in trailing {
                     if spokenCount >= maxSpokenSentences { break }
-                    let preview = sentence.prefix(48)
-                    log.info("speak[trailing] chain: \(preview, privacy: .public)")
+                    log.info("speak[trailing] chain: chars=\(sentence.count, privacy: .public)")
                     if !sentence.isEmpty, stage != .speaking {
                         stage = .speaking
                         await enterSpeakingSession()
@@ -735,18 +739,18 @@ final class QAOrchestrator {
                 do {
                     let counts = try await repository.mentionCounts(for: term)
                     let answer = Self.answerMentionCount(term: term, counts: counts, totalMeetings: allHeaders.count)
-                    log.info("global mention-count router hit: term=\"\(term, privacy: .public)\" meetings=\(allHeaders.count, privacy: .public)")
+                    log.info("global mention-count router hit: termLen=\(term.count, privacy: .public) meetings=\(allHeaders.count, privacy: .public)")
                     return await speakImmediateGlobalAnswer(question: trimmed, answer: answer, totalStart: totalStart)
                 } catch {
                     log.warning("global mention-count route failed: \(String(describing: error), privacy: .public) — falling through to retrieval")
                 }
             }
             if let overviewAnswer = Self.answerGlobalOverviewQuestion(trimmed, headers: allHeaders) {
-                log.info("global overview router hit: q=\"\(trimmed.prefix(40), privacy: .public)\" meetings=\(allHeaders.count, privacy: .public)")
+                log.info("global overview router hit: qLen=\(trimmed.count, privacy: .public) meetings=\(allHeaders.count, privacy: .public)")
                 return await speakImmediateGlobalAnswer(question: trimmed, answer: overviewAnswer, totalStart: totalStart)
             }
             if let metaAnswer = Self.answerMetadataQuestion(trimmed, headers: allHeaders) {
-                log.info("global metadata router hit: q=\"\(trimmed.prefix(40), privacy: .public)\" meetings=\(allHeaders.count, privacy: .public)")
+                log.info("global metadata router hit: qLen=\(trimmed.count, privacy: .public) meetings=\(allHeaders.count, privacy: .public)")
                 return await speakImmediateGlobalAnswer(question: trimmed, answer: metaAnswer, totalStart: totalStart)
             }
         } catch {
@@ -884,18 +888,27 @@ final class QAOrchestrator {
 
         let overviewBlock = Self.globalOverview(headers: headers)
         let overviewSection = overviewBlock.isEmpty ? "" : "Meeting overviews:\n\(overviewBlock)\n\n"
+        let contextCoverage = """
+        Context coverage:
+        - Indexed meeting overviews included: \(headers.filter { $0.summary != nil }.count)
+        - Retrieved transcript excerpts included: \(renderedLines.count)
+        - Treat the overviews as the library-wide baseline, then use excerpts for details.
+        - If either block is relevant, answer directly instead of using the fallback sentence.
+        """
         let excerptsSection: String
         if renderedLines.isEmpty {
             // Retrieval missed but we have summaries. Tell the LLM
             // explicitly so it doesn't hallucinate excerpts that aren't
             // there — answer from the overview block alone or refuse
             // honestly.
-            excerptsSection = "No specific excerpts retrieved. Answer from the overviews above; if they don't contain the answer, refuse honestly per your instructions.\n"
+            excerptsSection = "No specific excerpts retrieved. Answer from the overviews above. If the exact fact is missing, say that fact was not found and summarize the closest relevant overview context.\n"
         } else {
             excerptsSection = "Excerpts (sorted by relevance, across multiple meetings):\n\n\(renderedLines.joined(separator: "\n\n"))"
         }
         let prompt = """
         Question: \(trimmed)
+
+        \(contextCoverage)
 
         \(overviewSection)\(excerptsSection)
         """

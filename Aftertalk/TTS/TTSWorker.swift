@@ -36,9 +36,16 @@ actor TTSWorker {
     private var pending: Int = 0
     private var idleContinuations: [CheckedContinuation<Void, Never>] = []
     private var isRunning = false
+    private var isPlayerAttached = false
+    private var nextBufferID = 0
+    /// Keep scheduled PCM buffers alive until AVAudioPlayerNode calls their
+    /// completion handler. AVFoundation normally retains scheduled buffers,
+    /// but holding our own references removes a real-device failure mode where
+    /// pressure from Kokoro/Foundation Models correlates with mid-buffer cuts.
+    private var scheduledBuffers: [Int: AVAudioPCMBuffer] = [:]
     /// Token returned by `NotificationCenter.addObserver` so we can release
     /// the route-change observer at deinit.
-    nonisolated(unsafe) private var configChangeObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var configChangeObserver: (any NSObjectProtocol)?
 
     init() {
         // 24 kHz mono Float32 — the format every Kokoro `[Float]` chunk arrives in.
@@ -81,7 +88,11 @@ actor TTSWorker {
     /// matches the new output format.
     private func handleConfigurationChange() {
         log.info("TTSWorker: AVAudioEngine config changed — will rebuild graph on next enqueue")
+        player.stop()
         isRunning = false
+        outputFormat = nil
+        converter = nil
+        scheduledBuffers.removeAll()
         // Drop any pending counts so `waitUntilDone()` callers don't hang
         // waiting for completion handlers that won't fire for the dropped
         // buffers.
@@ -169,6 +180,9 @@ actor TTSWorker {
             return
         }
 
+        let bufferID = nextBufferID
+        nextBufferID += 1
+        scheduledBuffers[bufferID] = outBuffer
         pending += 1
         // The completion handler is `@Sendable` and our `bufferDidFinish` is
         // actor-isolated, so we hop back into the actor inside the closure.
@@ -185,11 +199,11 @@ actor TTSWorker {
             player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: completion)
         }
         scheduleBufferShim(outBuffer) { [weak self] in
-            Task { [weak self] in await self?.bufferDidFinish() }
+            Task { [weak self] in await self?.bufferDidFinish(id: bufferID) }
         }
         #else
         player.scheduleBuffer(outBuffer, at: nil, options: []) { [weak self] in
-            Task { [weak self] in await self?.bufferDidFinish() }
+            Task { [weak self] in await self?.bufferDidFinish(id: bufferID) }
         }
         #endif
 
@@ -211,6 +225,7 @@ actor TTSWorker {
     /// utterance can start clean. Used for barge-in / cancel.
     func cancel() async {
         player.stop()
+        scheduledBuffers.removeAll()
         pending = 0
         let waiters = idleContinuations
         idleContinuations.removeAll()
@@ -226,14 +241,18 @@ actor TTSWorker {
     /// this detach step.
     func shutdown() async {
         await cancel()
-        if isRunning {
-            engine.stop()
+        engine.stop()
+        outputFormat = nil
+        converter = nil
+        isRunning = false
+        if isPlayerAttached {
+            engine.disconnectNodeOutput(player)
             // `detach` is the inverse of `attach`. After a successful
             // detach, `ensureRunning` is free to call `attach` again on
             // the next utterance without AVAudioEngine raising
             // "required condition is false: !nodeimpl->IsAttached()".
             engine.detach(player)
-            isRunning = false
+            isPlayerAttached = false
         }
     }
 
@@ -256,15 +275,22 @@ actor TTSWorker {
         self.outputFormat = outFmt
         self.converter = AVAudioConverter(from: inputFormat, to: outFmt)
 
-        engine.attach(player)
+        if !isPlayerAttached {
+            engine.attach(player)
+            isPlayerAttached = true
+        } else {
+            engine.disconnectNodeOutput(player)
+        }
         engine.connect(player, to: engine.mainMixerNode, format: outFmt)
+        engine.mainMixerNode.outputVolume = 0.92
         engine.prepare()
         try engine.start()
         isRunning = true
         log.info("TTSWorker engine up at \(hwRate, privacy: .public) Hz")
     }
 
-    private func bufferDidFinish() {
+    private func bufferDidFinish(id: Int) {
+        scheduledBuffers[id] = nil
         pending = max(0, pending - 1)
         guard pending == 0 else { return }
         let waiters = idleContinuations

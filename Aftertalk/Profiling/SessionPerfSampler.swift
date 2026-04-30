@@ -46,6 +46,10 @@ actor SessionPerfSampler {
         let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("perf", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        try? FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+            ofItemAtPath: base.path
+        )
         self.outputURL = base.appendingPathComponent("\(sessionId).csv")
     }
 
@@ -63,7 +67,7 @@ actor SessionPerfSampler {
                 try? await Task.sleep(for: .seconds(1))
             }
         }
-        log.info("perf: session \(self.sessionId, privacy: .public) sampling started → \(self.outputURL.path, privacy: .public)")
+        log.info("perf: session \(self.sessionId, privacy: .public) sampling started → \(self.outputURL.lastPathComponent, privacy: .public)")
     }
 
     /// Stop sampling and flush CSV. Returns the file URL.
@@ -139,6 +143,10 @@ actor SessionPerfSampler {
         }
         do {
             try out.write(to: outputURL, atomically: true, encoding: .utf8)
+            try? FileManager.default.setAttributes(
+                [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                ofItemAtPath: outputURL.path
+            )
         } catch {
             log.error("perf: CSV write failed: \(String(describing: error), privacy: .public)")
         }

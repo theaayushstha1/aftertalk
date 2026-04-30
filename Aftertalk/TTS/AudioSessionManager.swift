@@ -37,7 +37,7 @@ actor AudioSessionManager {
 
     /// Tracks the active configuration so back-to-back transitions skip the
     /// expensive setCategory + setActive dance when nothing actually changed.
-    enum Mode: Equatable { case none, recording, voiceChat, voiceQuestion }
+    enum Mode: Equatable { case none, recording, voiceQuestion, speechPlayback, voiceChat }
     private var mode: Mode = .none
 
     private init() {}
@@ -72,8 +72,9 @@ actor AudioSessionManager {
     /// `.measurement` matches what the meeting recorder uses, so question
     /// transcription quality matches meeting transcription quality. We turn
     /// AEC off here too (no TTS is playing, so there is no echo to cancel).
-    /// The orchestrator flips back to `.voiceChat` before TTS starts so the
-    /// barge-in mic gets AEC against Kokoro's playback bleed.
+    /// The orchestrator flips to high-quality speech playback before Kokoro
+    /// speaks. Auto barge-in is disabled, so we do not keep AEC hot during
+    /// TTS playback.
     func configureForVoiceQuestion() throws(AudioSessionError) {
         let session = AVAudioSession.sharedInstance()
         do {
@@ -94,6 +95,36 @@ actor AudioSessionManager {
             throw .activateFailed(error)
         }
         mode = .voiceQuestion
+    }
+
+    /// Q&A speaking mode for Kokoro replies.
+    ///
+    /// Earlier builds used `.playAndRecord` + `.voiceChat` here so automatic
+    /// barge-in could get echo cancellation while TTS was playing. Auto
+    /// barge-in is now disabled; staying on `.voiceChat` just routes the
+    /// synthesized voice through phone-call DSP (AGC, noise suppression, and
+    /// a voice-band curve), which can make local TTS sound crackly or clipped.
+    /// `.playback` + `.spokenAudio` gives AVAudioEngine a cleaner output path
+    /// and a slightly larger IO buffer so the player has breathing room under
+    /// Foundation Models / Kokoro CPU load.
+    func configureForSpeechPlayback() throws(AudioSessionError) {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(
+                .playback,
+                mode: .spokenAudio,
+                options: [.duckOthers, .allowBluetoothA2DP]
+            )
+        } catch {
+            throw .configureFailed(error)
+        }
+        try? session.setPreferredIOBufferDuration(0.03)
+        do {
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+        } catch {
+            throw .activateFailed(error)
+        }
+        mode = .speechPlayback
     }
 
     /// Q&A speaking mode: `.playAndRecord` + `.voiceChat` so Kokoro plays the

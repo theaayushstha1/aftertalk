@@ -182,8 +182,12 @@ final class MoonshineStreamer: ASRService, @unchecked Sendable {
 
     deinit {
         queue.sync {
-            stream?.close()
-            transcriber?.close()
+            // MoonshineVoice.Stream and Transcriber both call close() from
+            // their own deinits. Calling close() here as well double-frees
+            // handles and logs "moonshine_free_stream(): handle is invalid"
+            // during repeated Q&A teardown. Releasing the objects is enough.
+            stream = nil
+            transcriber = nil
         }
         continuation?.finish()
         diagContinuation?.finish()

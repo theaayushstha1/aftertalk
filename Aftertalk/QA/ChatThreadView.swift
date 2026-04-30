@@ -240,15 +240,31 @@ struct ChatThreadView: View {
     ]
 
     private func exemplarRow(_ q: String, divider: Bool) -> some View {
-        VStack(spacing: 0) {
-            if divider { QSDivider() }
-            Text("\u{201C}\(q)\u{201D}")
-                .font(.atSerif(14.5, weight: .regular))
-                .italic()
-                .foregroundStyle(palette.ink)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        // Tap-to-ask: the suggested questions used to be static text. Tapping
+        // one now fires it through the same submit path as typing — saves
+        // the user from rewording the prompt by hand and gives a clean
+        // demo on a fresh meeting.
+        Button {
+            Task { await submitTypedQuestion(text: q) }
+        } label: {
+            VStack(spacing: 0) {
+                if divider { QSDivider() }
+                HStack(alignment: .center, spacing: 12) {
+                    Text("\u{201C}\(q)\u{201D}")
+                        .font(.atSerif(14.5, weight: .regular))
+                        .italic()
+                        .foregroundStyle(palette.ink)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(palette.faint)
+                }
                 .padding(.vertical, 12)
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .disabled(!semanticQAAvailable || asking || holding)
     }
 
     // MARK: - Conversation (listening + thinking + messages)
@@ -283,6 +299,23 @@ struct ChatThreadView: View {
             }
             .onChange(of: holding) { _, on in
                 if on { withAnimation { proxy.scrollTo("listening", anchor: .bottom) } }
+            }
+            // Stream-time auto-scroll. Without these the streaming row would
+            // grow off the bottom of the screen while the model talks and the
+            // user only saw the answer once playback ended. We anchor every
+            // visual transition (retrieving → generating → speaking) to the
+            // bottom of the scroll view so the latest character is always in
+            // sight.
+            .onChange(of: orchestrator.liveAnswer) { _, _ in
+                guard !orchestrator.liveAnswer.isEmpty else { return }
+                withAnimation(.easeOut(duration: 0.18)) {
+                    proxy.scrollTo("streaming", anchor: .bottom)
+                }
+            }
+            .onChange(of: isThinking) { _, thinking in
+                if thinking {
+                    withAnimation { proxy.scrollTo("thinking", anchor: .bottom) }
+                }
             }
         }
         .frame(maxHeight: .infinity)
@@ -710,9 +743,13 @@ struct ChatThreadView: View {
         }
     }
 
-    private func submitTypedQuestion() async {
-        let question = typedQuestionTrimmed
-        guard canSubmitTypedQuestion, !question.isEmpty else { return }
+    private func submitTypedQuestion(text: String? = nil) async {
+        // `text == nil` means submit whatever's currently in the typed field
+        // (Return key / send button). Passing an explicit string lets the
+        // suggested-question rows reuse the exact same persist + ask path.
+        let raw = text ?? typedQuestion
+        let question = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard semanticQAAvailable, !asking, !holding, !question.isEmpty else { return }
 
         typedQuestion = ""
         typedQuestionFocused = false

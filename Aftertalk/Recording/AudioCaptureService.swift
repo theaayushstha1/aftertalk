@@ -219,6 +219,10 @@ final class AudioCaptureService: @unchecked Sendable {
             .appendingPathComponent("Recordings", isDirectory: true)
         do {
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            try? fm.setAttributes(
+                [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                ofItemAtPath: dir.path
+            )
         } catch {
             log.error("recording: mkdir failed: \(error.localizedDescription, privacy: .public)")
             return (nil, nil)
@@ -241,6 +245,10 @@ final class AudioCaptureService: @unchecked Sendable {
                                        settings: settings,
                                        commonFormat: .pcmFormatFloat32,
                                        interleaved: false)
+            try? fm.setAttributes(
+                [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                ofItemAtPath: url.path
+            )
             return (file, url)
         } catch {
             log.error("recording: AVAudioFile open failed: \(error.localizedDescription, privacy: .public)")
