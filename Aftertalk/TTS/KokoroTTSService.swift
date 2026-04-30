@@ -220,8 +220,11 @@ actor KokoroTTSService: TTSService {
             }
             // synthesizeDetailed gives us per-chunk `[Float]` PCM at 24 kHz with
             // NO per-call peak normalisation, so concatenating chunks across
-            // sentences keeps a consistent loudness curve.
-            let samples = result.chunks.flatMap(\.samples)
+            // sentences keeps a consistent loudness curve. We still trim the
+            // model's leading/trailing near-silence and apply a tiny fade so
+            // back-to-back utterances don't sound like separate clips starting
+            // and stopping.
+            let samples = Self.polishPlaybackSamples(result.chunks.flatMap(\.samples))
             // Fire-and-forget enqueue. The worker queue plays sentences in
             // FIFO order on its own actor, so synthesis of sentence N+1 starts
             // immediately after N's samples are queued — total wallclock is
@@ -233,6 +236,40 @@ actor KokoroTTSService: TTSService {
             log.error("synth failed: \(String(describing: error), privacy: .public)")
         }
         #endif
+    }
+
+    private static func polishPlaybackSamples(_ samples: [Float]) -> [Float] {
+        guard samples.count > 512 else { return samples }
+
+        // Kokoro often emits a small silence pad around every synthesis call.
+        // Keeping a little room preserves natural pauses while removing the
+        // obvious "restart" feeling between adjacent scheduled buffers.
+        let silenceThreshold: Float = 0.0025
+        guard let firstSpeech = samples.firstIndex(where: { abs($0) > silenceThreshold }),
+              let lastSpeech = samples.lastIndex(where: { abs($0) > silenceThreshold }),
+              firstSpeech < lastSpeech else {
+            return samples
+        }
+
+        let leadingKeep = Int(0.035 * 24_000.0)
+        let trailingKeep = Int(0.075 * 24_000.0)
+        let start = max(0, firstSpeech - leadingKeep)
+        let end = min(samples.count - 1, lastSpeech + trailingKeep)
+        var out = Array(samples[start...end])
+        applyEdgeFade(to: &out, frames: Int(0.008 * 24_000.0))
+        return out
+    }
+
+    private static func applyEdgeFade(to samples: inout [Float], frames requestedFrames: Int) {
+        let frames = min(requestedFrames, samples.count / 4)
+        guard frames > 1 else { return }
+
+        for i in 0..<frames {
+            let gain = Float(i) / Float(frames)
+            samples[i] *= gain
+            let tailIndex = samples.count - 1 - i
+            samples[tailIndex] *= gain
+        }
     }
 
     func stop() async {

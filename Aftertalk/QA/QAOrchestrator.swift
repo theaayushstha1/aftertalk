@@ -71,13 +71,12 @@ final class QAOrchestrator {
     /// but they could diverge later — global chat might want a longer window
     /// for example).
     var onAutoRearm: (@MainActor () async -> Void)?
-    /// Ordered chain of speech tasks. Each call to `speakChained` appends a
-    /// Task that awaits the previous tail before invoking the underlying
-    /// actor-isolated `tts.speak`. The orchestrator never blocks on
-    /// synthesis: the LLM stream keeps draining + the sentence detector
-    /// keeps finding boundaries while Kokoro synthesises previous sentences
-    /// in the background. Output order is preserved because each Task
-    /// awaits its predecessor's `.value` before issuing its own `speak`.
+    /// Ordered chain of speech tasks. Completed LLM sentences first flow
+    /// through `pendingSpeechText`, which coalesces short adjacent sentences
+    /// into one Kokoro utterance. Without that, answers sound like a playlist
+    /// of tiny clips: every sentence gets its own model attack/tail and the
+    /// player can underrun while the next sentence synthesises. The chain still
+    /// preserves order by awaiting the previous task before calling `tts.speak`.
     ///
     /// We track *every* task, not just the tail, so `cancel()` can stop all
     /// of them. A previous version cancelled only the tail — predecessors
@@ -86,6 +85,12 @@ final class QAOrchestrator {
     /// chunk that finished synthesising one beat later still played, making
     /// the cancel feel unresponsive.
     private var speechTasks: [Task<Void, Never>] = []
+    private var pendingSpeechText: String = ""
+
+    /// Keep chunks under the Kokoro 5s graph budget, but avoid dispatching
+    /// tiny one-sentence clips unless the stream finishes there.
+    private static let smoothSpeechTargetChars = 95
+    private static let smoothSpeechMaxChars = 135
 
     /// Cosine similarity floor below which we treat the question as off-topic
     /// and refuse to call the LLM (CS Navigator grounding-gate pattern). 0.4
@@ -161,6 +166,7 @@ final class QAOrchestrator {
         // mid-answer mic-tap actually silence the assistant.
         for t in speechTasks { t.cancel() }
         speechTasks.removeAll()
+        pendingSpeechText = ""
         bargeIn.stop()
         await tts.stop()
         liveAnswer = ""
@@ -211,16 +217,55 @@ final class QAOrchestrator {
         }
     }
 
-    /// Append `sentence` to the ordered speech chain and return immediately.
-    /// The caller (LLM stream loop) keeps reading the next snapshot while
-    /// Kokoro synthesises this sentence in the background. See `speakTail`.
-    private func speakChained(_ sentence: String) {
+    /// Add `sentence` to the smooth speech buffer. Returns true only when a
+    /// Kokoro utterance was actually dispatched; callers use that for TTFSW.
+    @discardableResult
+    private func speakChained(_ sentence: String) -> Bool {
+        let trimmed = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+
+        if pendingSpeechText.isEmpty {
+            pendingSpeechText = trimmed
+        } else {
+            let combined = pendingSpeechText + " " + trimmed
+            if combined.count <= Self.smoothSpeechMaxChars {
+                pendingSpeechText = combined
+            } else {
+                let didDispatch = flushPendingSpeechBuffer()
+                pendingSpeechText = trimmed
+                if pendingSpeechText.count >= Self.smoothSpeechTargetChars {
+                    return flushPendingSpeechBuffer() || didDispatch
+                }
+                return didDispatch
+            }
+        }
+
+        guard pendingSpeechText.count >= Self.smoothSpeechTargetChars
+                || pendingSpeechText.hasSuffix("?")
+                || pendingSpeechText.hasSuffix("!") else {
+            return false
+        }
+        return flushPendingSpeechBuffer()
+    }
+
+    private func flushPendingSpeechBuffer() -> Bool {
+        let text = pendingSpeechText.trimmingCharacters(in: .whitespacesAndNewlines)
+        pendingSpeechText = ""
+        guard !text.isEmpty else { return false }
+        appendSpeechTask(text)
+        return true
+    }
+
+    /// Append `text` to the ordered speech chain and return immediately. The
+    /// caller keeps draining the LLM stream while Kokoro synthesises this chunk
+    /// in the background.
+    private func appendSpeechTask(_ text: String) {
         let prev = speechTasks.last
         let svc = tts
         let task = Task { [prev] in
             if let prev { _ = await prev.value }
             if Task.isCancelled { return }
-            await svc.speak(sentence)
+            await svc.speak(text)
         }
         speechTasks.append(task)
     }
@@ -228,10 +273,13 @@ final class QAOrchestrator {
     /// Wait for every queued sentence in the chain to finish synthesising +
     /// being scheduled on the player. Used by the orchestrator after the LLM
     /// stream completes so we don't tear down `liveAnswer` mid-playback.
-    private func awaitSpeakChain() async {
+    @discardableResult
+    private func awaitSpeakChain() async -> Bool {
+        let didFlushPending = flushPendingSpeechBuffer()
         let tasks = speechTasks
         speechTasks.removeAll()
         for t in tasks { _ = await t.value }
+        return didFlushPending
     }
 
     /// Lazy-warm the TTS pipeline. Called from ChatThreadView.task so Kokoro's
@@ -268,9 +316,9 @@ final class QAOrchestrator {
         await enterSpeakingSession()
         for sentence in sentences {
             if Task.isCancelled { break }
-            speakChained(sentence)
+            _ = speakChained(sentence)
         }
-        await awaitSpeakChain()
+        _ = await awaitSpeakChain()
         stage = .idle
     }
 
@@ -447,9 +495,9 @@ final class QAOrchestrator {
                     if spokenCount >= maxSpokenSentences { break }
                     let preview = sentence.prefix(48)
                     log.info("speak[\(spokenCount + 1, privacy: .public)/\(self.maxSpokenSentences, privacy: .public)] chain: \(preview, privacy: .public)")
-                    speakChained(sentence)
+                    let didDispatch = speakChained(sentence)
                     spokenCount += 1
-                    if ttfswMillis == nil, let start = ttfswStart {
+                    if ttfswMillis == nil, didDispatch, let start = ttfswStart {
                         ttfswMillis = start.duration(to: .now).aftertalkMillis
                     }
                 }
@@ -468,14 +516,14 @@ final class QAOrchestrator {
                         await enterSpeakingSession()
                         armBargeIn()
                     }
-                    speakChained(sentence)
+                    let didDispatch = speakChained(sentence)
                     spokenCount += 1
                     // Some answers complete before the streaming detector
                     // sees a sentence-final punctuation token — the FIRST
                     // sentence then arrives only via this `finalize` path.
                     // Without setting `ttfswMillis` here the metric stays
                     // nil and we silently report "no TTFSW" for those turns.
-                    if ttfswMillis == nil, let start = ttfswStart {
+                    if ttfswMillis == nil, didDispatch, let start = ttfswStart {
                         ttfswMillis = start.duration(to: .now).aftertalkMillis
                     }
                 }
@@ -499,7 +547,10 @@ final class QAOrchestrator {
         // audio completion (that'd block the UI for ~3 s per sentence) — just
         // synthesis + scheduleBuffer, which is what makes the playback feel
         // continuous from the user's side.
-        await awaitSpeakChain()
+        let didFlushSpeech = await awaitSpeakChain()
+        if ttfswMillis == nil, didFlushSpeech, let start = ttfswStart {
+            ttfswMillis = start.duration(to: .now).aftertalkMillis
+        }
         bargeIn.stop()
 
         let elapsed = totalStart.duration(to: .now).aftertalkMillis
@@ -598,9 +649,9 @@ final class QAOrchestrator {
                 for sentence in sentences {
                     if Task.isCancelled { break outer }
                     if spokenCount >= maxSpokenSentences { break }
-                    speakChained(sentence)
+                    let didDispatch = speakChained(sentence)
                     spokenCount += 1
-                    if ttfswMillis == nil, let start = ttfswStart {
+                    if ttfswMillis == nil, didDispatch, let start = ttfswStart {
                         ttfswMillis = start.duration(to: .now).aftertalkMillis
                     }
                 }
@@ -614,9 +665,9 @@ final class QAOrchestrator {
                         await enterSpeakingSession()
                         armBargeIn()
                     }
-                    speakChained(sentence)
+                    let didDispatch = speakChained(sentence)
                     spokenCount += 1
-                    if ttfswMillis == nil, let start = ttfswStart {
+                    if ttfswMillis == nil, didDispatch, let start = ttfswStart {
                         ttfswMillis = start.duration(to: .now).aftertalkMillis
                     }
                 }
@@ -634,7 +685,10 @@ final class QAOrchestrator {
             return nil
         }
 
-        await awaitSpeakChain()
+        let didFlushSpeech = await awaitSpeakChain()
+        if ttfswMillis == nil, didFlushSpeech, let start = ttfswStart {
+            ttfswMillis = start.duration(to: .now).aftertalkMillis
+        }
         bargeIn.stop()
 
         // Pick up the best-effort citations we kicked off above.
@@ -874,9 +928,9 @@ final class QAOrchestrator {
                 for sentence in sentences {
                     if Task.isCancelled { break outer }
                     if spokenCount >= maxSpokenSentences { break }
-                    speakChained(sentence)
+                    let didDispatch = speakChained(sentence)
                     spokenCount += 1
-                    if ttfswMillis == nil, let start = ttfswStart {
+                    if ttfswMillis == nil, didDispatch, let start = ttfswStart {
                         ttfswMillis = start.duration(to: .now).aftertalkMillis
                     }
                 }
@@ -890,13 +944,13 @@ final class QAOrchestrator {
                         await enterSpeakingSession()
                         armBargeIn()
                     }
-                    speakChained(sentence)
+                    let didDispatch = speakChained(sentence)
                     spokenCount += 1
                     // Mirror of the per-meeting fix: cover the case where
                     // the first speakable sentence only emerges via the
                     // trailing finalize path. Without this, TTFSW silently
                     // reports nil for short / fast answers.
-                    if ttfswMillis == nil, let start = ttfswStart {
+                    if ttfswMillis == nil, didDispatch, let start = ttfswStart {
                         ttfswMillis = start.duration(to: .now).aftertalkMillis
                     }
                 }
@@ -914,7 +968,10 @@ final class QAOrchestrator {
             return nil
         }
 
-        await awaitSpeakChain()
+        let didFlushSpeech = await awaitSpeakChain()
+        if ttfswMillis == nil, didFlushSpeech, let start = ttfswStart {
+            ttfswMillis = start.duration(to: .now).aftertalkMillis
+        }
         bargeIn.stop()
 
         let elapsed = totalStart.duration(to: .now).aftertalkMillis
