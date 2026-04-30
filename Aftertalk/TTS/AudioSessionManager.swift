@@ -110,7 +110,29 @@ actor AudioSessionManager {
     /// on-device testing showed `.allowBluetoothA2DP` can make `setCategory`
     /// fail with `NSOSStatusErrorDomain Code=-50` on the current route.
     func configureForSpeechPlayback() throws(AudioSessionError) {
+        // Idempotent: if we're already in speechPlayback, skip the flip. The
+        // orchestrator calls `enterSpeakingSession` from many code paths and
+        // back-to-back flips are a real source of -50 errors.
+        if mode == .speechPlayback { return }
+
         let session = AVAudioSession.sharedInstance()
+
+        // Root cause of the recurring `NSOSStatusErrorDomain Code=-50`:
+        // we used to flip directly from `.playAndRecord` (set by
+        // `configureForVoiceQuestion`) to `.playback` while the session
+        // was still active and the input bus was still wired up. iOS
+        // rejects category-shrinking transitions on an active session
+        // with a generic paramErr (-50). The canonical iOS pattern is to
+        // briefly deactivate, set the new category, then reactivate. We
+        // ignore the deactivate error because some routes refuse to
+        // deactivate while another app is holding focus, and that case
+        // does not actually block the subsequent setCategory call (the
+        // OS still accepts the new category, it just leaves the previous
+        // route running until our setActive(true) lands).
+        if mode == .voiceQuestion || mode == .voiceChat || mode == .recording {
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+        }
+
         do {
             try session.setCategory(
                 .playback,
