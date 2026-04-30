@@ -278,7 +278,18 @@ actor PyannoteDiarizationService: DiarizationService {
             var bestId: String?
             var bestDist: Float = .infinity
             if let smallCentroid = centroids[smallId] {
-                for (otherId, otherCentroid) in centroids where otherId != smallId {
+                // Constrain target search to NON-GHOST clusters. If a ghost
+                // is allowed to pick another ghost as its nearest neighbor,
+                // two ghosts that are closer to each other than to any real
+                // cluster will form a remap cycle (A→B, B→A). The final
+                // segment relabel then swaps their IDs but neither ghost
+                // disappears — the log lies about "merged" while the unique
+                // speaker count is unchanged. By forbidding ghost→ghost
+                // edges entirely, `remap.keys` ⊆ candidates and
+                // `remap.values` ⊆ nonSmallIds are disjoint by construction
+                // and chains cannot form.
+                for otherId in nonSmallIds {
+                    guard let otherCentroid = centroids[otherId] else { continue }
                     let d = Self.cosineDistance(smallCentroid, otherCentroid)
                     if d < bestDist {
                         bestDist = d
@@ -303,13 +314,13 @@ actor PyannoteDiarizationService: DiarizationService {
             logger.info("collapse: no spurious clusters detected — \(byId.count, privacy: .public) speakers kept")
             return segments
         }
-        let collapsedCount = byId.count - remap.count
-        logger.info("collapse: \(byId.count, privacy: .public) raw → \(collapsedCount, privacy: .public) final speakers (merged \(remap.count, privacy: .public) ghosts)")
 
-        // Chain-resolve: when ghost A → ghost B and ghost B → real C, A must
-        // also resolve to C. The original single-hop apply left dangling
-        // pointers when remap target was itself remapped. Walk each chain
-        // until it lands on something not in remap (or detect a cycle).
+        // Chain-resolve. With the target-search constraint above, ghosts can
+        // only point at non-ghosts and chains cannot form, so this loop is
+        // defense-in-depth: if a future refactor relaxes that constraint
+        // (e.g. allows multi-hop merging), this keeps the relabel correct.
+        // Walk each remap entry until it lands on something not itself a
+        // remap key, with cycle detection on `seen`.
         for key in Array(remap.keys) {
             var seen: Set<String> = [key]
             var cursor = remap[key]!
@@ -320,7 +331,7 @@ actor PyannoteDiarizationService: DiarizationService {
             remap[key] = cursor
         }
 
-        return segments.map { seg in
+        let result = segments.map { seg in
             guard let target = remap[seg.speakerId] else { return seg }
             return TimedSpeakerSegment(
                 speakerId: target,
@@ -330,6 +341,17 @@ actor PyannoteDiarizationService: DiarizationService {
                 qualityScore: seg.qualityScore
             )
         }
+
+        // Compute the final speaker count from the actual relabeled output
+        // rather than from `byId.count - remap.count`. The arithmetic is
+        // correct given the current target constraint, but surveying the
+        // segments directly means the log stays honest if a future change
+        // ever breaks that invariant — the lie surfaces here instead of
+        // hiding behind matching arithmetic.
+        let finalUniqueSpeakers = Set(result.map(\.speakerId)).count
+        logger.info("collapse: \(byId.count, privacy: .public) raw → \(finalUniqueSpeakers, privacy: .public) final speakers (merged \(remap.count, privacy: .public) ghost candidates)")
+
+        return result
     }
 
     /// Cosine distance between two embeddings, range [0, 2]. Mirrors

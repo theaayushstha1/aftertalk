@@ -20,6 +20,7 @@
 		20AE905DE8A349CF749A3BEF /* ProcessingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1856790F895D61CBD48BBF4 /* ProcessingView.swift */; };
 		20C00BDB4A5A144761BB9C6F /* MeetingTitleSanitizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 869EA8DC4198370398D2C675 /* MeetingTitleSanitizer.swift */; };
 		22C743FAC9EEB9AA7849890F /* TTSWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F05E02C550A2CE27398F6A16 /* TTSWorker.swift */; };
+		2BF4C10ECA268FF7DF09F8D0 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 38E08ED8FEAB528286FDFBBD /* FluidAudio */; };
 		2C310D817826A0A6EEA932E4 /* speaker-diarization-coreml in Resources */ = {isa = PBXBuildFile; fileRef = C2BDC3D142F5100968F7631E /* speaker-diarization-coreml */; };
 		2EB8E37D42A9DFA5B3A8209A /* EnergyVADGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B5C8FC6A54E89C7F7244060 /* EnergyVADGate.swift */; };
 		310FCE3053C44A06CA540486 /* PrivacyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99862B2E5CBEF50199E2EB90 /* PrivacyMonitor.swift */; };
@@ -28,6 +29,7 @@
 		3B43BAE51490BD9B154C227A /* QAContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6812DF977A4E1532C1AECFFE /* QAContext.swift */; };
 		43E41EC61BEEBDE7E303D4D1 /* TTSService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75EB00EA79CC6EBF481D45C9 /* TTSService.swift */; };
 		4B7876DB7DC4BD31E4809923 /* AudioSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD030A4E86E5D2FEAD786508 /* AudioSessionManager.swift */; };
+		4EE80D9BD4098DEDF089B373 /* PyannoteDiarizationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1516301CB8176D2D224DAB44 /* PyannoteDiarizationServiceTests.swift */; };
 		4F6A4CC51B8108497C1EDB8D /* DebugOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E66BD314C64CDF3E3EF026A /* DebugOverlay.swift */; };
 		5186CA58F5105FB6FF3B3995 /* kokoro-82m-coreml in Resources */ = {isa = PBXBuildFile; fileRef = 1A74B7708239C81455540EDD /* kokoro-82m-coreml */; };
 		5B82CF57E29C433EB2E00959 /* EmbeddingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45B8ABF908DE5C6BF3378C9C /* EmbeddingService.swift */; };
@@ -74,10 +76,21 @@
 		FB6582F6CBFAC7698F098696 /* RecordingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F7F2DD575356414495ABE23 /* RecordingViewModel.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		1602E6BD157E5C4E4BDC7DC4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4E6496BF76A61443A8936988 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7D1D73C1B749A0E316DF4E0E;
+			remoteInfo = Aftertalk;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		02631AEB240C134B4DDD9B11 /* MeetingDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingDetailView.swift; sourceTree = "<group>"; };
 		05AB5125EE60D010710B1E7A /* QSComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QSComponents.swift; sourceTree = "<group>"; };
 		12CE4DE71780FBF89F329ECF /* ChunkIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChunkIndexer.swift; sourceTree = "<group>"; };
+		1516301CB8176D2D224DAB44 /* PyannoteDiarizationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PyannoteDiarizationServiceTests.swift; sourceTree = "<group>"; };
 		1A74B7708239C81455540EDD /* kokoro-82m-coreml */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "kokoro-82m-coreml"; path = "Aftertalk/Resources/Models/kokoro-82m-coreml"; sourceTree = SOURCE_ROOT; };
 		1B1B0BEC1102036E81A4290D /* ModelLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelLocator.swift; sourceTree = "<group>"; };
 		1F96E75E663C48C30044D7B1 /* GlobalChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalChatView.swift; sourceTree = "<group>"; };
@@ -133,6 +146,7 @@
 		D55C297DFDC40B8B8C450F05 /* AudioPreprocessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPreprocessor.swift; sourceTree = "<group>"; };
 		D6063AA672D8496187E4B91E /* MeetingSummaryEmbedding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSummaryEmbedding.swift; sourceTree = "<group>"; };
 		D6CD3F62BBAA845BDEBEEBA6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		DA1A81E6A0D6624D4F2247BE /* AftertalkTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = AftertalkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DEADFEB1B811F46CB0A86D15 /* MeetingSummaryRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSummaryRecord.swift; sourceTree = "<group>"; };
 		E001CBAE0B65AD79BBFBD529 /* SpeakerLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerLabel.swift; sourceTree = "<group>"; };
 		E158C2B0019B25DB7AF830B1 /* KokoroTTSService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KokoroTTSService.swift; sourceTree = "<group>"; };
@@ -143,6 +157,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		1E8CC0F9433B29E7EC31ADBF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2BF4C10ECA268FF7DF09F8D0 /* FluidAudio in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E74FA756D9FB0120B7B49304 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -209,6 +231,14 @@
 				7FF205284A7B13C43BF3011C /* ModelContainer+Aftertalk.swift */,
 			);
 			path = Persistence;
+			sourceTree = "<group>";
+		};
+		1367281F287246BA83FAFA3A /* AftertalkTests */ = {
+			isa = PBXGroup;
+			children = (
+				1516301CB8176D2D224DAB44 /* PyannoteDiarizationServiceTests.swift */,
+			);
+			path = AftertalkTests;
 			sourceTree = "<group>";
 		};
 		1CE116608722FE06C09F7A05 /* Models */ = {
@@ -294,6 +324,7 @@
 			isa = PBXGroup;
 			children = (
 				A462430E8BA1CA4361A61B3B /* Aftertalk.app */,
+				DA1A81E6A0D6624D4F2247BE /* AftertalkTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -342,6 +373,7 @@
 			isa = PBXGroup;
 			children = (
 				05BFFE4523E72D558E6C7F17 /* Aftertalk */,
+				1367281F287246BA83FAFA3A /* AftertalkTests */,
 				8B77FB1A6B7D338658F51951 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -370,6 +402,26 @@
 			productReference = A462430E8BA1CA4361A61B3B /* Aftertalk.app */;
 			productType = "com.apple.product-type.application";
 		};
+		C1A0E147427991176A098351 /* AftertalkTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D12F8CDEDDD1494201046F9E /* Build configuration list for PBXNativeTarget "AftertalkTests" */;
+			buildPhases = (
+				D69CDA0777C8778968AA4845 /* Sources */,
+				1E8CC0F9433B29E7EC31ADBF /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FDBF6E79E5B89D1119A4C6E1 /* PBXTargetDependency */,
+			);
+			name = AftertalkTests;
+			packageProductDependencies = (
+				38E08ED8FEAB528286FDFBBD /* FluidAudio */,
+			);
+			productName = AftertalkTests;
+			productReference = DA1A81E6A0D6624D4F2247BE /* AftertalkTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -380,6 +432,10 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					7D1D73C1B749A0E316DF4E0E = {
+						DevelopmentTeam = LPAWL44K53;
+						ProvisioningStyle = Automatic;
+					};
+					C1A0E147427991176A098351 = {
 						DevelopmentTeam = LPAWL44K53;
 						ProvisioningStyle = Automatic;
 					};
@@ -404,6 +460,7 @@
 			projectRoot = "";
 			targets = (
 				7D1D73C1B749A0E316DF4E0E /* Aftertalk */,
+				C1A0E147427991176A098351 /* AftertalkTests */,
 			);
 		};
 /* End PBXProject section */
@@ -489,7 +546,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D69CDA0777C8778968AA4845 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4EE80D9BD4098DEDF089B373 /* PyannoteDiarizationServiceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		FDBF6E79E5B89D1119A4C6E1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7D1D73C1B749A0E316DF4E0E /* Aftertalk */;
+			targetProxy = 1602E6BD157E5C4E4BDC7DC4 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		2F18679FD1EE9159D5A7DFFE /* Debug */ = {
@@ -577,6 +650,38 @@
 				SDKROOT = iphoneos;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		71F99A24D336A70BF2154B75 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.theaayushstha.aftertalkTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Aftertalk.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Aftertalk";
+			};
+			name = Release;
+		};
+		AB71B3AAA178CBCB48CC1282 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.theaayushstha.aftertalkTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Aftertalk.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Aftertalk";
 			};
 			name = Debug;
 		};
@@ -682,6 +787,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		D12F8CDEDDD1494201046F9E /* Build configuration list for PBXNativeTarget "AftertalkTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AB71B3AAA178CBCB48CC1282 /* Debug */,
+				71F99A24D336A70BF2154B75 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -704,6 +818,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		38E08ED8FEAB528286FDFBBD /* FluidAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1B0D41E83827941F37EDA815 /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudio;
+		};
 		58A06F94C73C33F95A02D67F /* MoonshineVoice */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 2C47DDAF68CCCB02AA6E3672 /* XCRemoteSwiftPackageReference "moonshine-swift" */;
