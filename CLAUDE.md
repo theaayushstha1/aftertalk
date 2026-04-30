@@ -1,6 +1,6 @@
 # Aftertalk — Claude Code Session Rules
 
-You are working on **Aftertalk**, a fully on-device iOS meeting recording + voice Q&A app. This is a 7-day take-home for **AirCaps (YC F25)** that gates an in-person paid work trial. Submission deadline: **Sun May 3, 2026, EOD ET**.
+You are working on **Aftertalk**, a fully on-device iOS meeting recording + voice Q&A app. This is a take-home for **AirCaps (YC F25)** that gates an in-person paid work trial. There is no fixed deadline — the project runs until Aayush is satisfied with submission quality.
 
 ## What this app does
 Records a meeting on iPhone in airplane mode → streams ASR locally → generates a structured summary on-device → user holds a button, asks a question by voice → app retrieves from the meeting (or across all meetings) and answers by voice. No network calls, ever. iOS 26+, Swift 6, primary devices iPhone Air + iPhone 17 Pro Max.
