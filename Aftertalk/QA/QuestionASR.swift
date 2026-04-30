@@ -222,8 +222,8 @@ final class QuestionASR {
     /// Bridge from the audio capture tap into Moonshine.
     ///
     /// The meeting-recording pump runs every chunk through `EnergyVADGate`
-    /// to shed silence frames so medium streaming holds real-time on
-    /// continuous audio. **For hold-to-talk Q&A we deliberately skip the
+    /// to shed silence frames and protect real-time headroom on continuous
+    /// audio. **For hold-to-talk Q&A we deliberately skip the
     /// gate** — the user holding the button IS the voice-activity signal
     /// we'd otherwise infer from RMS. Gating again was double-counting,
     /// and on a quiet speaker (or a question that starts before the gate

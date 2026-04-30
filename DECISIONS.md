@@ -18,30 +18,31 @@ A condensed record of the tradeoffs that shaped Aftertalk. Each entry follows th
 
 ---
 
-## 2. Moonshine medium streaming as live ASR, not WhisperKit or SpeechAnalyzer
+## 2. Moonshine small streaming as live ASR, not WhisperKit or SpeechAnalyzer
 
 **Alternatives:** WhisperKit (Argmax), Apple SpeechAnalyzer (iOS 26).
 
 **Rationale:**
 1. The brief explicitly preferred Moonshine. Building against the named dependency made the deliverable defensible.
-2. Medium beats Whisper Large v3 on conversational WER at a quarter of the size (303 MB vs ~1.5 GB).
+2. Small stays real-time on sustained speech on iPhone. Medium is more accurate in isolation, but a 17 minute continuous reading showed it building a multi-minute backlog.
 3. Native streaming architecture, designed for sub 250 ms TTFT.
 4. `.ort` weights ship as data, no Core ML compile step at first launch.
+5. Parakeet remains the canonical post-recording pass, so the live model optimizes for latency while stored meeting quality comes from the WAV.
 
 **What would change my mind:** WhisperKit's ANE bound large v3 turbo would close the size gap and might overtake on accuracy. Re evaluate before a v2.
 
 ---
 
-## 3. VAD gated streaming so medium fits real time on iPhone
+## 3. VAD gated streaming plus small live ASR for real-time iPhone capture
 
 **Alternatives:** swap to small or tiny streaming variants, run medium continuously and accept lag, run medium on background priority and let it drift.
 
 **Rationale:**
-Medium streaming on iPhone runs ~0.6× real time per chunk on continuous audio. Without gating, audio backs up in the dispatch queue and transcripts emerge 30 to 60 seconds behind the live mic. Conversational meeting audio is 40 to 60 percent silence; an `EnergyVADGate` with hysteresis, hold tail, and pre roll sheds those frames before they reach the encoder. The recovered headroom is exactly what medium needs to hold real time.
+Medium streaming on iPhone can drift below real time on continuous audio. Without backpressure, audio backs up in the dispatch queue and transcripts emerge after the live mic has already stopped. Conversational meeting audio is 40 to 60 percent silence; an `EnergyVADGate` with hysteresis, hold tail, and pre roll still sheds those frames before they reach the encoder. The final submission choice is small streaming for live preview plus VAD for headroom, with Parakeet polishing the saved WAV after recording.
 
 This is the canonical pattern. WhisperKit, Pipecat, Google Live Caption, and `whisper.cpp -vad` all wrap streaming ASR in a VAD gate.
 
-**What would change my mind:** a streaming model that's natively real time on iPhone (Moonshine tiny is, but its WER is meaningfully worse).
+**What would change my mind:** a future medium build that is natively real time on the target iPhones for 20 minute continuous speech without queue backlog.
 
 ---
 

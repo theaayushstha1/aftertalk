@@ -2,7 +2,34 @@
 
 This directory holds on-device ML models. Files are gitignored; they're sourced from the public Moonshine CDN.
 
-## moonshine-medium-streaming-en (active)
+## moonshine-small-streaming-en (active)
+
+Streaming English ASR, 123M params, 7.84% WER on LibriSpeech test-clean. Bundle: ~157 MB.
+
+Active because the live transcript must stay real-time on sustained speech. Parakeet remains the post-recording canonical pass, so the live model can bias toward latency.
+
+Source: `https://download.moonshine.ai/model/small-streaming-en/quantized/<file>`.
+
+Files expected:
+- `adapter.ort`
+- `cross_kv.ort`
+- `decoder_kv.ort`
+- `encoder.ort`
+- `frontend.ort`
+- `streaming_config.json`
+- `tokenizer.bin`
+
+To populate locally:
+
+```bash
+mkdir -p Aftertalk/Models/moonshine-small-streaming-en
+cd Aftertalk/Models/moonshine-small-streaming-en
+for f in adapter.ort cross_kv.ort decoder_kv.ort encoder.ort frontend.ort streaming_config.json tokenizer.bin; do
+  curl -fSL -o "$f" "https://download.moonshine.ai/model/small-streaming-en/quantized/$f"
+done
+```
+
+## moonshine-medium-streaming-en (kept as quality fallback)
 
 Streaming English ASR, 245M params, 6.65% WER on LibriSpeech test-clean — beats Whisper Large v3 (7.44%) at a fraction of the size. Bundle: ~303 MB.
 
@@ -29,11 +56,7 @@ for f in adapter.ort cross_kv.ort decoder_kv.ort encoder.ort frontend.ort stream
 done
 ```
 
-## moonshine-small-streaming-en (kept as fallback)
-
-123M params, 7.84% WER, ~157 MB. Used pre-day-3.10. Same file list as medium. Source: the same CDN with `small-streaming-en` in the path, or extract from `https://github.com/moonshine-ai/moonshine/releases/latest/download/ios-Transcriber.tar.gz`.
-
-Switching back: change `ModelLocator.moonshineModelDirectory` folder name and `MoonshineStreamer` `modelArch` to `.smallStreaming`. Two-line revert.
+Switching back to medium: change `ModelLocator.moonshineModelDirectory` folder name and `MoonshineStreamer` `modelArch` to `.mediumStreaming`. Two-line revert.
 
 ## parakeet-tdt-0.6b-v2 (batch / canonical pass)
 

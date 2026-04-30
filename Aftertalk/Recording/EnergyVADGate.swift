@@ -6,17 +6,16 @@ import Foundation
 ///
 /// ## Why this exists
 ///
-/// Moonshine medium streaming on iPhone runs slightly under real-time per
-/// chunk on continuous audio: ~25–35 ms of inference for ~21 ms of incoming
-/// samples. On a multi-minute recording that 4–10 ms/chunk drift compounds
-/// into 30–60 s of perceived transcript lag because audio backs up in the
-/// dispatch queue feeding `Stream.addAudio`. The encoder is the wrong place
-/// to fix that — instead we trim the input.
+/// Moonshine live streaming can drift behind real time on sustained voiced
+/// audio. On a multi-minute recording, small per-chunk drift compounds into
+/// perceived transcript lag because audio backs up in the dispatch queue
+/// feeding `Stream.addAudio`. The encoder is the wrong place to fix that —
+/// instead we trim the input.
 ///
 /// Conversational meeting audio is 40–60% silence (turn gaps, breaths, the
 /// pauses between sentences). Dropping those frames before they reach
-/// Moonshine recovers exactly the budget the medium model needs to hold
-/// real-time on iPhone, *without* downgrading to a smaller variant.
+/// Moonshine preserves the headroom the live preview needs to stay real-time
+/// on iPhone.
 ///
 /// This is the canonical pattern: WhisperKit, Pipecat, Google Live Caption,
 /// and `whisper.cpp -vad` all wrap a streaming ASR in a VAD gate. We pick

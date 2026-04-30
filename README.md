@@ -156,7 +156,7 @@ sequenceDiagram
 | Layer | Implementation | Notes |
 |---|---|---|
 | App shell | <img src="https://cdn.simpleicons.org/swift/F05138" width="14" /> SwiftUI · SwiftData · AVAudioEngine | iOS 26+, Swift 6 strict concurrency |
-| Live ASR | <img src="https://cdn.simpleicons.org/apple/1B1B1F" width="14" /> **Moonshine medium streaming** + EnergyVADGate | VAD-gated input keeps medium under real-time |
+| Live ASR | <img src="https://cdn.simpleicons.org/apple/1B1B1F" width="14" /> **Moonshine small streaming** + EnergyVADGate | Real-time live preview; Parakeet produces the canonical transcript |
 | Polish ASR | <img src="https://cdn.simpleicons.org/apple/1B1B1F" width="14" /> FluidAudio **Parakeet TDT 0.6B v2** | Word-accurate timings, ~0.5× real-time |
 | Diarization | <img src="https://cdn.simpleicons.org/apple/1B1B1F" width="14" /> FluidAudio Pyannote 3.1 + WeSpeaker v2 | Best-effort labels, `clusteringThreshold=0.5` + ghost-cluster cleanup |
 | LLM | <img src="https://cdn.simpleicons.org/apple/1B1B1F" width="14" /> Apple **Foundation Models** | 4096-token context, structured `@Generable` summary |
@@ -198,7 +198,7 @@ xcodegen generate
 ./Scripts/fetch-pyannote-models.sh
 
 # Moonshine .ort weights go under
-# Aftertalk/Models/moonshine-medium-streaming-en/
+# Aftertalk/Models/moonshine-small-streaming-en/
 
 open Aftertalk.xcodeproj
 ```

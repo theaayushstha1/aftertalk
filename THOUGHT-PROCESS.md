@@ -14,7 +14,7 @@ The first instinct was to plan all five stretches in parallel. The better move w
 
 Concrete day 0 outputs:
 - Picked Foundation Models for the LLM (system shipped, zero bundle weight, 4096 token cap forces honest budgeting).
-- Picked Moonshine medium streaming for ASR (the brief named it; medium beats Whisper Large v3 at a fraction of the size).
+- Picked Moonshine streaming for ASR (the brief named it; small became the final live model after long continuous audio exposed medium backlog).
 - Picked NLContextualEmbedding over gte small Core ML (zero shipped weights; plan to A/B later).
 - Picked SwiftDataVectorStore over sqlite vec (corpus is small; in process cosine is fast; same SwiftData store as the rest of the app).
 - Picked FluidAudio Kokoro plus Pyannote (one dependency, two stretch goals).
@@ -34,7 +34,7 @@ First, the audio session order matters more than any single Apple doc admits. `s
 
 Second, sample rate management is explicit or it fails. Mic delivers 48 kHz, ASR wants 16 kHz, Kokoro outputs 24 kHz, speakers want 48 kHz. AVAudioConverter at every boundary, never implicit graph conversion.
 
-Third, Moonshine medium's per chunk inference latency on iPhone is just barely under real time on continuous audio. On a long recording the dispatch queue between the audio tap and the encoder fills up and transcripts emerge tens of seconds late. The solution wasn't a smaller model; it was a VAD gate that sheds silence frames before they reach Moonshine. Conversational speech is 40 to 60 percent silence, and reclaiming that fraction of the encoder budget is exactly what medium needs.
+Third, Moonshine medium's per chunk inference latency on iPhone is close enough to real time that continuous audio can expose backlog. The first mitigation was a VAD gate that sheds silence frames before they reach Moonshine. Conversational speech is 40 to 60 percent silence, and reclaiming that fraction of the encoder budget made normal meetings usable. A later 17 minute continuous reading still built a backlog, so the final live model switched to Moonshine small while Parakeet kept ownership of the canonical transcript.
 
 The VAD wasn't planned for day 1. Discovering its necessity on the first device test was the first signal that the build would be a sequence of "the architecture diagram on day 0 was almost right" iterations.
 

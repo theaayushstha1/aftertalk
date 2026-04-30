@@ -222,9 +222,9 @@ struct SettingsView: View {
                 state: pyannote ? .loaded : .unavailable
             ),
             ModelEntry(
-                name: "Moonshine medium streaming",
+                name: "Moonshine small streaming",
                 role: "Speech-to-text · streaming",
-                size: "290 MB",
+                size: "157 MB",
                 state: moonshine ? .loaded : .unavailable
             ),
             ModelEntry(

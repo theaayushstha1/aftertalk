@@ -76,7 +76,7 @@ final class MoonshineStreamer: ASRService, @unchecked Sendable {
 
     /// Loads the Transcriber + creates the Stream + attaches the listener.
     /// Idempotent. Safe to call from `.task` / view-appear so the first user
-    /// press doesn't pay the cold-start cost (~600ms with mediumStreaming).
+    /// press doesn't pay the cold-start cost (~600ms with smallStreaming).
     /// Does NOT arm the session — call `start()` per utterance.
     func warm() async throws {
         guard FileManager.default.fileExists(atPath: modelDirectory.path) else {
@@ -88,12 +88,11 @@ final class MoonshineStreamer: ASRService, @unchecked Sendable {
                 do {
                     if self.transcriber == nil {
                         // Arch must match `ModelLocator.moonshineModelDirectory()`.
-                        // Medium is the picked variant; the VAD gate in
-                        // `RecordingViewModel.SamplePump` skips silence
-                        // frames so inference stays under real-time on
-                        // iPhone without sacrificing transcription quality.
+                        // Small is the picked live-preview variant: it stays
+                        // real-time on sustained speech, while Parakeet later
+                        // regenerates the canonical transcript from the WAV.
                         let t = try Transcriber(modelPath: self.modelDirectory.path,
-                                                modelArch: .mediumStreaming)
+                                                modelArch: .smallStreaming)
                         let s = try t.createStream(updateInterval: 0.10)
                         s.addListener { [weak self] event in
                             self?.dispatch(event)
