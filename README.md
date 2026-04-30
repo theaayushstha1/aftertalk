@@ -2,7 +2,7 @@
 
 # Aftertalk
 
-### Private meeting memory for iPhone — recorded, summarised, and answered entirely on device
+### Meeting memory that never leaves your phone.
 
 <a href="docs/assets/aftertalk-demo.mp4">
   <img src="docs/assets/aftertalk-demo.gif" alt="Aftertalk iPhone demo: recording, structured summary, voice Q&A" width="320">
