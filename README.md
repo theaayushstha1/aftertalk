@@ -20,7 +20,7 @@
 [![Swift 6](https://img.shields.io/badge/Swift-6-F05138?style=for-the-badge&logo=swift&logoColor=white)](https://swift.org)
 [![Network zero](https://img.shields.io/badge/Network-zero-1B1B1F?style=for-the-badge&logo=apple&logoColor=white)](#privacy)
 [![License: MIT](https://img.shields.io/badge/License-MIT-FFC107?style=for-the-badge)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-39%20passing-2F7D55?style=for-the-badge&logo=swift&logoColor=white)](#tests)
+[![Tests](https://img.shields.io/badge/tests-45%20passing-2F7D55?style=for-the-badge&logo=swift&logoColor=white)](#tests)
 
 <br />
 
@@ -212,7 +212,7 @@ xcodebuild test -scheme Aftertalk \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
-39 tests across 7 suites — VAD gating, sentence boundary detection, title sanitization, diarization cluster cleanup, BM25 tokenization, RRF fusion, and global Q&A router (mention-count + overview deterministic intents). The diarization regression test explicitly encodes the ghost-cluster cycle bug that broke speaker labels under degraded acoustic conditions.
+45 tests across 7 suites — VAD gating, sentence boundary detection, title sanitization, diarization cluster cleanup, BM25 tokenization, RRF fusion, and global Q&A router (mention-count + overview deterministic intents + spoken-TTS sanitation, including contraction/possessive preservation so Kokoro pronounces "don't" and "Andre's" correctly). The diarization regression test explicitly encodes the ghost-cluster cycle bug that broke speaker labels under degraded acoustic conditions.
 
 <a id="status"></a>
 
@@ -232,7 +232,7 @@ xcodebuild test -scheme Aftertalk \
 - Far-field classrooms are microphone-limited; a phone across a room cannot match a lapel mic near the speaker. The `RecordingProfile.farField` plumbing exists but isn't user-toggleable yet.
 - Single-channel diarization labels are best-effort, especially on PC-speaker-played audio or heavy room reverb. FluidAudio's `OfflineDiarizerManager` + VBx is the documented next step.
 - Pipeline parallelism. Polish and diarization run concurrently today via `async let`; full background diarization (chunk + summarize from polish alone) is deferred for submission stability.
-- Final 30-min + 10-min device perf chart still pending a real-device capture run.
+- Real-device perf capture: see [`perf/aftertalk-perf-20260430-20min.png`](perf/aftertalk-perf-20260430-20min.png) for a 20-minute iPhone 17 Pro Max session (recording + Q&A). Memory peaks ~2.3 GB, settles ~1.7 GB; CPU averages 41% of one core; thermal stays in `fair` for the recording and steps to `serious` during Kokoro-heavy Q&A turns. Battery delta is +0.0% because the device was on charger — a 30-min + 10-min off-battery session is still the canonical run we'd ship for a v1 review.
 
 ---
 

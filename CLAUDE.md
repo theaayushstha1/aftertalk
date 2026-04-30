@@ -9,21 +9,21 @@ Records a meeting on iPhone in airplane mode → streams ASR locally → generat
 1. **No network calls in production code paths.** No `URLSession`, no `URLRequest`, no third-party SDK that phones home. Privacy is the entire pitch.
 2. **iOS 26+ only.** Foundation Models was introduced at WWDC25 and ships with iOS 26. Do not add iOS 18 fallbacks.
 3. **Foundation Models context cap is 4096 tokens.** Always budget: ~250 system + ~50 question + ≤2400 context + ~1200 generation. Use `Session.tokenCount(_:)` (iOS 26.4+) to verify.
-4. **Audio session order is sacred.** `.playAndRecord` category → `.voiceChat` mode → `setPrefersEchoCancelledInput(true)` → activate. Wrong order silently disables AEC.
+4. **Audio session transitions are sacred.** Recording/question capture uses measurement-quality input; Kokoro playback uses `.playback` + `.spokenAudio`. Only use `.voiceChat` AEC if auto barge-in is re-enabled, and then configure category → mode → `setPrefersEchoCancelledInput(true)` → activate.
 5. **Sample rate conversion is explicit.** Mic 48kHz → ASR 16kHz → Kokoro 24kHz → speaker 48kHz. Never rely on implicit graph conversion.
 6. **Test on device, not simulator.** ANE is unavailable in simulator; perf claims must come from iPhone Air or 17 Pro Max.
 
 ## Component picks (locked, do not bikeshed)
 | Layer | Pick | Fallback |
 |---|---|---|
-| ASR | Moonshine Swift (`moonshine-ai/moonshine-swift`) | WhisperKit |
+| ASR | Moonshine small streaming live preview + Parakeet polish | Moonshine medium for short controlled demos; WhisperKit researched |
 | LLM | Apple Foundation Models | MLX Swift + Phi-4-mini |
-| Embeddings | gte-small Core ML (384-dim) | NLContextualEmbedding |
-| Vector store | sqlite-vec on SwiftData SQLite file | VecturaKit |
+| Embeddings | Apple NLContextualEmbedding (512-dim) | gte-small Core ML if A/B proves recall lift |
+| Vector store | SwiftDataVectorStore in-process cosine | sqlite-vec / VecturaKit when corpus grows |
 | TTS | FluidAudio Kokoro 82M | AVSpeechSynthesizer |
 | Diarization | FluidAudio Pyannote Core ML | skip + document |
 | VAD | Silero v5 (industry-standard pick) — currently shipping energy-based gate as bridge | TEN-VAD via Sherpa-ONNX (researched, deferred to hardening sprint) |
-| Turn detection | 800ms silence timeout + energy-based barge-in (shipped) | Pipecat SmartTurnV3 (researched, deferred to hardening sprint) |
+| Turn detection | Hold-to-talk; auto barge-in intentionally disabled | Pipecat SmartTurnV3 (researched, deferred to hardening sprint) |
 
 ## Session workflow
 1. On session start, read in this order: `CLAUDE.md` (this file) → `PRD.md` → `ARCHITECTURE.md` → the relevant `docs/day-N-*.md` for the worktree you're in.
@@ -94,7 +94,7 @@ Don't pre-launch the stream until Aayush signals testing — running `idevicesys
 - ASR not streaming: check `examples/ios/Transcriber` in `moonshine-ai/moonshine-swift`.
 - AEC dropping audio: WWDC23/10235 has the canonical AVAudioSession order.
 - Foundation Models region-locked: swap to MLX Swift + Phi-4-mini behind the existing `LLMService` protocol.
-- sqlite-vec extension won't load: confirm the `.dylib` is in the app bundle and `sqlite3_load_extension` is enabled via `SQLITE_OMIT_LOAD_EXTENSION` not being set in build flags.
+- Retrieval recall poor: check full-transcript path threshold first, then hybrid BM25+dense fusion, then embedding repair state. sqlite-vec is a future scale upgrade, not the shipped vector store.
 - Pyannote diarization accuracy poor: document expected accuracy in README, restrict demo to clean recordings, fix speaker count to 2 in golden test set.
 
 ## Daily 24-hr update email (to Nirbhay)

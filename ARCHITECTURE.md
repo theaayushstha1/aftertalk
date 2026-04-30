@@ -28,21 +28,21 @@ Technical reference. Read after `CLAUDE.md` and `PRD.md`. The `~/Documents/After
                                           [Kokoro neural TTS via FluidAudio]
                                                        │
                                                        ▼
-                                   [Speaker output, with barge-in mic active]
+                                   [Speaker output; next question is hold-to-talk or typed]
 ```
 
 ## Component decisions
 
 | Layer | Pick | Why | Fallback |
 |---|---|---|---|
-| ASR (live) | Moonshine **medium streaming** (`moonshine-ai/moonshine-swift`) via `EnergyVADGate` | Best WER in the Moonshine family at acceptable iPhone footprint; the VAD gate sheds 40–60% of input compute on conversational silence so medium fits inside real-time on A18 hardware | WhisperKit (Argmax) — production iOS package, ANE, sub-250ms |
+| ASR (live) | Moonshine **small streaming** (`moonshine-ai/moonshine-swift`) via `EnergyVADGate` | Stays real-time on sustained speech. Medium is more accurate on short clips, but long continuous readings built a backlog; Parakeet owns the higher-quality canonical transcript after recording stops. | Moonshine medium streaming for short controlled demos; WhisperKit (Argmax) as a researched alternative |
 | ASR (post-recording polish) | FluidAudio **Parakeet TDT 0.6B v2** (Core ML) | Word-level timings, lower WER than streaming Moonshine at the cost of being non-streaming | Skip and ship raw Moonshine streaming output |
 | LLM | Apple Foundation Models (iOS 26+) | Free, ~30 tok/s on A18, snapshot streaming + `@Generable` macros for structured output, RAG-friendly tool calling | MLX Swift + Phi-4-mini 4-bit |
 | Embeddings | Apple **NLContextualEmbedding** (system asset, 512-dim, English) | Zero bytes shipped in the bundle, on-device, hands a Float vector per token straight to our `EmbeddingService` protocol | gte-small Core ML (384-dim, ~50 MB) — researched + deferred until A/B harness shows recall@3 lift justifies the bundle weight |
 | Vector store | **SwiftDataVectorStore** — typed `MeetingSummaryEmbedding` rows + in-process cosine search | Idiomatic SwiftData; the cosine pass is O(n·d) but n stays in the hundreds for the take-home corpus and dimensionality is 512 | sqlite-vec on the same SQLite file — researched + deferred until meeting count climbs into the tens |
 | TTS (stretch) | FluidAudio Kokoro 82M | ANE-optimized, 50x real-time, ~400ms first audio, single dependency that also ships diarization | `AVSpeechSynthesizer` if Kokoro integration explodes |
 | Diarization (stretch) | FluidAudio Pyannote Core ML | Same dependency as TTS, ~80% accuracy on iPhone mic, 60x real-time | Skip + document tradeoff |
-| VAD | `EnergyVADGate` — RMS hysteresis, -38 / -50 dBFS thresholds, 300 ms hold tail, 200 ms pre-roll. Sheds silence frames before they reach Moonshine so medium streaming holds real-time on iPhone. | Energy-based today; the gate's `RecordingProfile`-driven init is wired so a future Classroom Mode commit can swap to far-field thresholds without touching the gate's call sites | TEN-VAD via Sherpa-ONNX (researched, deferred to hardening sprint) |
+| VAD | `EnergyVADGate` — RMS hysteresis, -38 / -50 dBFS thresholds, 300 ms hold tail, 200 ms pre-roll. Sheds silence frames before they reach Moonshine so small streaming has enough headroom to stay real-time on iPhone. | Energy-based today; the gate's `RecordingProfile`-driven init is wired so a future Classroom Mode commit can swap to far-field thresholds without touching the gate's call sites | TEN-VAD via Sherpa-ONNX (researched, deferred to hardening sprint) |
 | EoU prediction | 800ms silence timeout + hold-to-talk override | Hold-to-talk covers the demo flow; auto-EoU is not on the critical path | Pipecat SmartTurnV3 (researched, deferred to hardening sprint) |
 
 ## SwiftData data model
@@ -135,9 +135,9 @@ Foundation Models hard cap: 4096 tokens (input + output). On iOS 26.4+ we get `S
 
 **Layer 3 — Hold-to-talk override**. User can always hold the button; release = immediate finalize. This is the only auto-interrupt mechanism in the shipped build.
 
-### Barge-in flow (with AEC discipline)
-1. While TTS plays, mic stays armed, AEC active (Apple's voice-processing IO unit).
-2. Auto barge-in is intentionally disabled in the shipped build (see `BargeInController.swift`); user taps to stop. When Silero v5 (or TEN-VAD as the deferred research option) lands and the energy gate is replaced, the flow becomes: VAD reports speech for ≥150ms continuous AND that audio passes ASR confidence threshold:
+### Deferred barge-in flow (with AEC discipline)
+1. In the shipped build, Kokoro playback uses a conservative speech playback route and the mic is not kept armed.
+2. Auto barge-in is intentionally disabled (see `BargeInController.swift`); the user asks the next question by holding the mic again or typing. When Silero v5 (or TEN-VAD as the deferred research option) lands and the energy gate is replaced, the flow becomes: VAD reports speech for ≥150ms continuous AND that audio passes ASR confidence threshold:
    - Hard-stop Kokoro audio via `AVAudioPlayerNode.stop()` + 50ms fade
    - Cancel in-flight Foundation Models generation (cooperative cancellation token)
    - Drop unspoken sentence buffer
@@ -145,8 +145,9 @@ Foundation Models hard cap: 4096 tokens (input + output). On iOS 26.4+ we get `S
 
 ## iOS audio session pitfall checklist
 
-- Configure session in this order: `.playAndRecord` category → `.voiceChat` mode → `setPrefersEchoCancelledInput(true)` → activate. Wrong order silently disables AEC.
-- Use `AVAudioEngine` with VoiceProcessingIO audio unit (not raw mic input) for built-in AEC. Apple's AEC is sufficient on iPhone 12+; do not pull in WebRTC AEC unless you have ≥20ms timing requirements.
+- Recording/question capture should stay measurement quality; Kokoro playback should stay `.playback` + `.spokenAudio` with a plain `.playback` fallback for routes that reject richer options.
+- Only configure `.playAndRecord` + `.voiceChat` + `setPrefersEchoCancelledInput(true)` if automatic barge-in is re-enabled. Wrong order silently disables AEC.
+- Use `AVAudioEngine` with VoiceProcessingIO audio unit only for that future barge-in path. Apple's AEC is sufficient on iPhone 12+; do not pull in WebRTC AEC unless you have ≥20ms timing requirements.
 - After `AVAudioPlayerNode.stop()`, the next `installTap` produces 100-200ms of garbage audio. Workaround: 100ms guard delay before resuming ASR, or reinitialize the audio graph.
 - Sample rate management is explicit: mic delivers 48kHz, ASR wants 16kHz, Kokoro outputs 24kHz, speaker wants 48kHz. Use `AVAudioConverter` at every boundary; never rely on implicit graph conversion.
 - Register `AVAudioSession.interruptionNotification` and handle `.shouldResume` (Siri, calls, notifications). Failing to resume = mic hot, speaker silent.
@@ -221,7 +222,7 @@ Aftertalk/
 ├── TTS/
 │   ├── KokoroTTSService.swift        // FluidAudio Kokoro 82M wrapper, streaming queue
 │   ├── TTSWorker.swift               // actor managing playback + prefetch
-│   └── AudioSessionManager.swift     // .playAndRecord + .voiceChat AEC plumbing
+│   └── AudioSessionManager.swift     // measurement capture + conservative TTS playback routes
 ├── Persistence/
 │   ├── ModelContainer+Aftertalk.swift
 │   ├── MeetingsRepository.swift      // @ModelActor — meetings, embeddings, chats, delete cleanup
