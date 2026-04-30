@@ -50,18 +50,28 @@
     text-transform: uppercase;
     font-weight: 500;
   }
-  .brand-meta .repo {
+  .brand-meta .repo-label {
     display: block;
+    font-size: 6pt;
+    color: #6B5A3F;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-weight: 700;
+    margin-top: 3pt;
+    margin-bottom: 1pt;
+  }
+  .brand-meta .repo {
+    display: inline-block;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 7.2pt;
+    font-size: 8.2pt;
     color: #1A1A1A;
-    margin-top: 2pt;
     letter-spacing: 0;
     background: #E8DFC4;
-    padding: 1.4pt 5pt;
-    border-radius: 2pt;
-    border: 0.4pt solid #C4A77D;
-    font-weight: 500;
+    padding: 2.5pt 7pt;
+    border-radius: 3pt;
+    border: 0.6pt solid #C4A77D;
+    font-weight: 600;
+    box-shadow: 0 0.4pt 1.2pt rgba(0,0,0,0.06);
   }
 
   .title-block {
@@ -185,7 +195,7 @@
     font-size: 7.6pt;
     color: #3A3530;
     line-height: 1.36;
-    text-align: justify;
+    text-align: left;
   }
   .choice-body strong { color: #1A1A1A; font-weight: 600; }
 
@@ -277,6 +287,7 @@
   <div class="brand">Aftertalk</div>
   <div class="brand-meta">
     <div class="top">Final Submission · April 30, 2026</div>
+    <div class="repo-label">Repository · open source · MIT</div>
     <a class="repo" href="https://github.com/theaayushstha1/aftertalk">github.com/theaayushstha1/aftertalk</a>
   </div>
 </div>
@@ -284,7 +295,7 @@
 <div class="title-block">
   <div class="velocity-row">
     <span class="eyebrow">Aftertalk · v0.9.0-rc1</span>
-    <span class="velocity-pill">all required + 5 of 5 stretches · zero network requests · 45 of 45 tests passing</span>
+    <span class="velocity-pill">all required + 5 of 5 stretches · zero app-authored network calls · 45 of 45 tests passing</span>
   </div>
   <h1 class="title">Fully on-device meeting intelligence for iOS 26, with a verifiable <em>privacy posture</em>.</h1>
   <p class="lede">Aftertalk is a complete iPhone application that records a meeting, transcribes it locally, generates a structured summary through Apple Foundation Models, and answers spoken or typed questions about the recording, both within a single meeting and across the entire library. The recording, transcription, summarization, retrieval, generation, and synthesis pipelines all execute on the device. The repository contains a static audit demonstrating that no production code path imports a networking primitive, and a runtime monitor raises a fault if any active network interface is detected during recording. The screen recorded demonstration accompanies this submission with airplane mode visible in the iOS Control Center for the full duration of the run.</p>
@@ -301,7 +312,7 @@
     <div class="choice">
       <div class="choice-label">Decision</div>
       <div class="choice-title">Two tier ASR over a single model</div>
-      <div class="choice-body">Live preview uses <strong>Moonshine small streaming</strong> because it sustains real time on long readings; sustained tests with the medium variant exhibited multi minute latency accumulation. The polished canonical transcript is produced by <strong>Parakeet</strong> on the saved waveform after recording terminates. The two tier design preserves time to first token for the user facing surface while delivering Whisper class accuracy in the stored artifact.</div>
+      <div class="choice-body">Live preview uses <strong>Moonshine small streaming</strong> because it sustains real time on long readings; sustained tests with the medium variant exhibited multi minute latency accumulation. The polished canonical transcript is produced by <strong>Parakeet</strong> on the saved waveform after recording terminates. The two tier design preserves time to first token for the user facing surface while delivering higher quality batch accuracy in the stored artifact.</div>
     </div>
     <div class="choice">
       <div class="choice-label">Decision</div>
@@ -326,7 +337,7 @@
   <div class="metrics">
     <div class="metric">
       <div class="metric-num">0</div>
-      <div class="metric-label">Network requests</div>
+      <div class="metric-label">App-authored network calls</div>
     </div>
     <div class="metric">
       <div class="metric-num">45<small>/45</small></div>
@@ -338,7 +349,7 @@
     </div>
     <div class="metric">
       <div class="metric-num">2.3<small>GB</small></div>
-      <div class="metric-label">Peak memory, on device</div>
+      <div class="metric-label">Peak memory, 20-min device run</div>
     </div>
     <div class="metric">
       <div class="metric-num">82<small>M</small></div>
@@ -350,13 +361,13 @@
 <section>
   <div class="submission-block">
     <div class="sb-label">Submission · accompanying material</div>
-    <div class="sb-body">The repository is available publicly at <code>github.com/theaayushstha1/aftertalk</code> under the MIT license, tagged at <code>v0.9.0-rc1</code>. The full architectural narrative, fifteen documented decisions, and complete dependency provenance are present in the repository <code>README.md</code>, <code>ARCHITECTURE.md</code>, <code>DECISIONS.md</code>, and <code>docs/Aftertalk-Complete-Reference.pdf</code>. <strong>A screen recorded demonstration video, captured on iPhone 17 Pro Max with airplane mode visible throughout, will be attached to this email by tonight</strong> and shows the complete loop: airplane mode confirmation, recording, structured summary, per meeting question answering, cross meeting question answering, and the in app privacy audit.</div>
+    <div class="sb-body">The repository is available publicly at <code>github.com/theaayushstha1/aftertalk</code> under the MIT license, tagged at <code>v0.9.0-rc1</code>. The full architectural narrative, fifteen documented decisions, and complete dependency provenance are present in the repository <code>README.md</code>, <code>ARCHITECTURE.md</code>, <code>DECISIONS.md</code>, and <code>docs/Aftertalk-Complete-Reference.pdf</code>. <strong>The accompanying screen recording, captured on iPhone 17 Pro Max with airplane mode visible throughout</strong>, shows the complete loop: airplane mode confirmation, recording, structured summary, per meeting question answering, cross meeting question answering, and the in app privacy audit.</div>
   </div>
 </section>
 
 <div class="footer">
   <div><strong>Aftertalk</strong> · A personal experiment in fully on-device meeting intelligence</div>
-  <div>v0.9.0-rc1 · 45 / 45 tests · zero network requests · MIT</div>
+  <div>v0.9.0-rc1 · 45 / 45 tests · zero app-authored network calls · MIT</div>
 </div>
 
 </body>
