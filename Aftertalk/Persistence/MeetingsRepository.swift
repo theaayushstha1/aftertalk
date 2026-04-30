@@ -428,6 +428,41 @@ actor MeetingsRepository {
         }
     }
 
+    /// Exact whole-word mention counts over the canonical full transcript for
+    /// every meeting. This is deliberately not RAG: a question like "how many
+    /// times was AI mentioned?" asks for a deterministic database aggregate,
+    /// not an LLM summary over retrieved chunks. Counting against
+    /// `fullTranscript` avoids double-counting overlapped transcript chunks.
+    func mentionCounts(for rawTerm: String) throws -> [MeetingMentionCount] {
+        let term = rawTerm.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else { return [] }
+
+        let descriptor = FetchDescriptor<Meeting>(
+            sortBy: [SortDescriptor(\.recordedAt, order: .reverse)]
+        )
+        let meetings = try modelContext.fetch(descriptor)
+        return meetings.compactMap { meeting in
+            let count = Self.countWholeWord(term, in: meeting.fullTranscript)
+            guard count > 0 else { return nil }
+            return MeetingMentionCount(
+                meetingId: meeting.id,
+                title: meeting.title,
+                count: count
+            )
+        }
+    }
+
+    private static func countWholeWord(_ term: String, in text: String) -> Int {
+        guard !term.isEmpty, !text.isEmpty else { return 0 }
+        let normalized = term.lowercased()
+        let escaped = NSRegularExpression.escapedPattern(for: normalized)
+        let body = normalized == "ai" ? #"a[\s.]*i\.?"# : escaped
+        let pattern = #"(?i)(?<![\p{L}\p{N}_])"# + body + #"(?![\p{L}\p{N}_])"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return 0 }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.numberOfMatches(in: text, range: range)
+    }
+
     /// Returns the chat thread ID for the given meeting, creating one on first
     /// access. Per-meeting threads always have `isGlobal = false` and a non-nil
     /// `meetingId`; the global cross-meeting thread is created in Day 5.
@@ -487,6 +522,12 @@ struct MeetingHeader: Sendable {
         let actionItems: [(String, String?)]
         let openQuestions: [String]
     }
+}
+
+struct MeetingMentionCount: Sendable {
+    let meetingId: UUID
+    let title: String
+    let count: Int
 }
 
 enum QARepositoryError: Error, CustomStringConvertible {

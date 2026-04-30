@@ -105,6 +105,8 @@ final class QAOrchestrator {
     /// just makes the threshold honest about what NLContextual produces.
     private let groundingThreshold: Float = 0.10
 
+    nonisolated private static let globalOverviewHeaderLimit = 12
+
     /// Hard cap on spoken sentences. The brief asks for ~3-5 sentence answers,
     /// but soft-wraps + commas can split a single thought into multiple emitted
     /// "sentences" so we leave headroom.
@@ -666,38 +668,35 @@ final class QAOrchestrator {
         didBargeIn = false
         let totalStart = ContinuousClock.now
 
-        // Metadata router: trivial questions about the meeting roster ("how
-        // many meetings", "list my meetings", "most recent meeting") never
-        // match in chunk-embedding space — the gate below fires and we'd say
-        // "I don't have that across your meetings yet" even though we
-        // trivially do. Intercept those before retrieval and answer from the
-        // SwiftData header roster directly. Non-metadata questions fall
-        // through unchanged so the grounding gate still protects everything
-        // else.
+        // Global Ask has a few deterministic intents that should never go
+        // through RAG. "How many times was AI mentioned?" is an exact database
+        // aggregate over full transcripts, not a semantic retrieval problem.
+        // "What did my meetings talk about?" is best answered from the
+        // structured summaries across the library. Keep these routers narrow:
+        // they run before retrieval, so a broad match here can steal real RAG
+        // questions.
         do {
             let allHeaders = try await repository.allMeetingHeaders()
+            if let term = Self.extractMentionCountTerm(trimmed) {
+                do {
+                    let counts = try await repository.mentionCounts(for: term)
+                    let answer = Self.answerMentionCount(term: term, counts: counts, totalMeetings: allHeaders.count)
+                    log.info("global mention-count router hit: term=\"\(term, privacy: .public)\" meetings=\(allHeaders.count, privacy: .public)")
+                    return await speakImmediateGlobalAnswer(question: trimmed, answer: answer, totalStart: totalStart)
+                } catch {
+                    log.warning("global mention-count route failed: \(String(describing: error), privacy: .public) — falling through to retrieval")
+                }
+            }
+            if let overviewAnswer = Self.answerGlobalOverviewQuestion(trimmed, headers: allHeaders) {
+                log.info("global overview router hit: q=\"\(trimmed.prefix(40), privacy: .public)\" meetings=\(allHeaders.count, privacy: .public)")
+                return await speakImmediateGlobalAnswer(question: trimmed, answer: overviewAnswer, totalStart: totalStart)
+            }
             if let metaAnswer = Self.answerMetadataQuestion(trimmed, headers: allHeaders) {
                 log.info("global metadata router hit: q=\"\(trimmed.prefix(40), privacy: .public)\" meetings=\(allHeaders.count, privacy: .public)")
-                stage = .speaking
-                liveAnswer = metaAnswer
-                await enterSpeakingSession()
-                armBargeIn()
-                await tts.speak(metaAnswer)
-                bargeIn.stop()
-                let elapsed = totalStart.duration(to: .now).aftertalkMillis
-                liveAnswer = ""
-                stage = .idle
-                return QAResult(
-                    question: trimmed,
-                    answer: metaAnswer,
-                    citations: [],
-                    groundedByLLM: false,
-                    ttfswMillis: nil,
-                    totalMillis: elapsed
-                )
+                return await speakImmediateGlobalAnswer(question: trimmed, answer: metaAnswer, totalStart: totalStart)
             }
         } catch {
-            log.warning("metadata router header fetch failed: \(String(describing: error), privacy: .public) — falling through to retrieval")
+            log.warning("global deterministic router header fetch failed: \(String(describing: error), privacy: .public) — falling through to retrieval")
         }
 
         let retrieval: RetrievalResult
@@ -773,7 +772,7 @@ final class QAOrchestrator {
         // meetings come first (they're score-ranked); recent meetings
         // backfill up to a small cap so the multi-meeting block doesn't
         // explode the token budget.
-        let baselineHeaders = Array(allHeadersForOverview.prefix(5))
+        let baselineHeaders = Array(allHeadersForOverview.prefix(Self.globalOverviewHeaderLimit))
         var headerIndex: [UUID: MeetingHeader] = [:]
         for h in baselineHeaders { headerIndex[h.id] = h }
         let headers: [MeetingHeader]
@@ -932,6 +931,30 @@ final class QAOrchestrator {
         )
     }
 
+    private func speakImmediateGlobalAnswer(
+        question: String,
+        answer: String,
+        totalStart: ContinuousClock.Instant
+    ) async -> QAResult {
+        stage = .speaking
+        liveAnswer = answer
+        await enterSpeakingSession()
+        armBargeIn()
+        await tts.speak(answer)
+        bargeIn.stop()
+        let elapsed = totalStart.duration(to: .now).aftertalkMillis
+        liveAnswer = ""
+        stage = .idle
+        return QAResult(
+            question: question,
+            answer: answer,
+            citations: [],
+            groundedByLLM: false,
+            ttfswMillis: nil,
+            totalMillis: elapsed
+        )
+    }
+
     private func checkAvailability() throws {
         let model = SystemLanguageModel.default
         switch model.availability {
@@ -942,7 +965,7 @@ final class QAOrchestrator {
     }
 
     /// Lightweight intent classifier for the global ask path. Catches the
-    /// three classes of "ask the database, not the LLM" questions:
+    /// three classes of "ask the roster, not the LLM" questions:
     ///
     /// - Count: "how many meetings", "number of meetings", "count of meetings"
     /// - List:  "list my meetings", "what meetings do I have", "show all meetings"
@@ -952,11 +975,15 @@ final class QAOrchestrator {
     /// otherwise nil so the orchestrator falls through to retrieval + LLM.
     /// Pure function on `[MeetingHeader]` so it stays trivially testable and
     /// safe to call from `@MainActor`.
-    static func answerMetadataQuestion(_ question: String, headers: [MeetingHeader]) -> String? {
+    nonisolated static func answerMetadataQuestion(_ question: String, headers: [MeetingHeader]) -> String? {
         let q = question.lowercased()
-        guard q.contains("meeting") else { return nil }
+        let mentionsMeeting = q.contains("meeting")
 
-        let countPatterns = ["how many", "number of", "count"]
+        let countPatterns = [
+            "how many meetings", "how many meeting",
+            "number of meetings", "number of meeting",
+            "count of meetings", "count of meeting"
+        ]
         let listPatterns = ["list", "what meetings", "which meetings", "show all", "show me all", "show my"]
         let recentPatterns = ["recent", "latest", "last"]
 
@@ -965,26 +992,185 @@ final class QAOrchestrator {
             if n == 0 { return "You have no meetings recorded yet." }
             return "You have \(n) meeting\(n == 1 ? "" : "s") recorded."
         }
-        if listPatterns.contains(where: { q.contains($0) }) {
+        if mentionsMeeting && listPatterns.contains(where: { q.contains($0) }) {
             if headers.isEmpty { return "You have no meetings recorded yet." }
             let titles = headers.prefix(5).map { "\u{2022} \($0.title)" }.joined(separator: "\n")
             return "Your meetings:\n\(titles)"
         }
-        if recentPatterns.contains(where: { q.contains($0) }) {
+        if mentionsMeeting && recentPatterns.contains(where: { q.contains($0) }) {
             guard let last = headers.first else { return "You have no meetings yet." }
             return "Your most recent meeting is \"\(last.title)\"."
         }
         return nil
     }
 
+    /// Extracts the counted term from questions like "how many times was AI
+    /// mentioned across my meetings?" This intentionally handles only narrow
+    /// mention/count phrasing; everything else falls through to retrieval.
+    nonisolated static func extractMentionCountTerm(_ question: String) -> String? {
+        let lowered = question.lowercased()
+        guard lowered.contains("how many"),
+              lowered.contains("mention") || lowered.contains("mentioned") else {
+            return nil
+        }
+
+        if let quoted = firstQuotedPhrase(in: question) {
+            return quoted
+        }
+
+        let tokens = lowered
+            .split { !$0.isLetter && !$0.isNumber }
+            .map(String.init)
+        guard let mentionIndex = tokens.firstIndex(where: { $0.hasPrefix("mention") }) else {
+            return nil
+        }
+
+        let stopwords: Set<String> = [
+            "a", "across", "all", "an", "are", "be", "been", "can", "count",
+            "did", "do", "does", "has", "have", "had", "how", "i", "in",
+            "is", "it", "many", "me", "meeting", "meetings", "mention",
+            "mentioned", "my", "number", "of", "on", "phrase", "term", "tell",
+            "that", "the", "this", "time", "times", "was", "were", "whole",
+            "word", "you", "your"
+        ]
+        return tokens[..<mentionIndex]
+            .reversed()
+            .first { !stopwords.contains($0) && !$0.isEmpty }
+    }
+
+    nonisolated static func answerMentionCount(
+        term: String,
+        counts: [MeetingMentionCount],
+        totalMeetings: Int
+    ) -> String {
+        let display = term.count <= 3 ? term.uppercased() : term
+        let total = counts.reduce(0) { $0 + $1.count }
+        let meetingWord = totalMeetings == 1 ? "meeting" : "meetings"
+        guard total > 0 else {
+            return "I found no whole-word mentions of \(display) across your \(totalMeetings) \(meetingWord)."
+        }
+
+        let hitMeetingWord = counts.count == 1 ? "meeting" : "meetings"
+        let timeWord = total == 1 ? "time" : "times"
+        let strongest = counts
+            .sorted {
+                if $0.count == $1.count { return $0.title < $1.title }
+                return $0.count > $1.count
+            }
+            .prefix(3)
+            .map { "\($0.title) with \($0.count)" }
+
+        var answer = "\(display) was mentioned \(total) \(timeWord) across \(counts.count) \(hitMeetingWord), out of \(totalMeetings) \(meetingWord)."
+        if !strongest.isEmpty {
+            answer += " The strongest matches were \(naturalList(strongest))."
+        }
+        return answer
+    }
+
+    /// Deterministic answer for broad global-overview questions. In global
+    /// chat, a phrase like "what did this meeting talk about?" has no single
+    /// selected meeting, so default to the whole library instead of silently
+    /// treating the newest meeting as the scope.
+    nonisolated static func answerGlobalOverviewQuestion(_ question: String, headers: [MeetingHeader]) -> String? {
+        let q = question.lowercased()
+        guard q.contains("meeting") else { return nil }
+        guard !q.contains("how many"), !q.contains("mention") else { return nil }
+
+        let overviewPatterns = [
+            "talk about", "talked about", "talking about",
+            "discuss", "discussed", "what kind", "what kinds",
+            "what are they about", "what were they about"
+        ]
+        let asksAboutMeetings = overviewPatterns.contains { q.contains($0) }
+            || (q.contains("what") && q.contains("about"))
+        guard asksAboutMeetings else { return nil }
+
+        let summarized = headers.filter { $0.summary != nil }
+        guard !summarized.isEmpty else { return nil }
+
+        var topicBuckets: [String: (display: String, count: Int)] = [:]
+        var decisionSamples: [String] = []
+        for header in summarized {
+            guard let summary = header.summary else { continue }
+            for topic in summary.topics.prefix(8) {
+                let key = normalizedTopicKey(topic)
+                guard !key.isEmpty else { continue }
+                let existing = topicBuckets[key]
+                topicBuckets[key] = (existing?.display ?? topic, (existing?.count ?? 0) + 1)
+            }
+            decisionSamples.append(contentsOf: summary.decisions.prefix(1))
+        }
+
+        let topics = topicBuckets.values
+            .sorted {
+                if $0.count == $1.count { return $0.display < $1.display }
+                return $0.count > $1.count
+            }
+            .prefix(8)
+            .map(\.display)
+        let themeText: String
+        if topics.isEmpty {
+            let titles = summarized.prefix(8).map(\.title)
+            guard !titles.isEmpty else { return nil }
+            themeText = naturalList(titles)
+        } else {
+            themeText = naturalList(Array(topics))
+        }
+
+        let meetingWord = headers.count == 1 ? "meeting" : "meetings"
+        var answer = "Across your \(headers.count) \(meetingWord), the main themes are \(themeText)."
+        answer += " I found structured summaries for \(summarized.count) of them."
+        if let decision = decisionSamples.first, !decision.isEmpty {
+            answer += " One recurring concrete item was \(decision)"
+            if !answer.hasSuffix(".") { answer += "." }
+        }
+        return answer
+    }
+
+    nonisolated private static func firstQuotedPhrase(in text: String) -> String? {
+        let pattern = #""([^"]+)"|'([^']+)'"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: range) else { return nil }
+        for index in 1..<match.numberOfRanges {
+            let r = match.range(at: index)
+            guard r.location != NSNotFound, let swiftRange = Range(r, in: text) else { continue }
+            let phrase = text[swiftRange].trimmingCharacters(in: .whitespacesAndNewlines)
+            if !phrase.isEmpty { return phrase.lowercased() }
+        }
+        return nil
+    }
+
+    nonisolated private static func normalizedTopicKey(_ text: String) -> String {
+        text
+            .lowercased()
+            .split { !$0.isLetter && !$0.isNumber }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    nonisolated private static func naturalList(_ values: [String]) -> String {
+        switch values.count {
+        case 0:
+            return ""
+        case 1:
+            return values[0]
+        case 2:
+            return "\(values[0]) and \(values[1])"
+        default:
+            let head = values.dropLast().joined(separator: ", ")
+            return "\(head), and \(values.last ?? "")"
+        }
+    }
+
     /// Compact multi-meeting overview block. Each header gets one short
     /// paragraph that lists topics + decisions + action items, capped tight
-    /// so even five meetings fit comfortably under our 2400-token budget
+    /// so even a dozen meetings fit comfortably under our 2400-token budget
     /// alongside the chunk excerpts. Headers without a structured summary
     /// (still-processing or pre-Day 4 records) are skipped silently.
-    private static func globalOverview(headers: [MeetingHeader]) -> String {
+    nonisolated private static func globalOverview(headers: [MeetingHeader]) -> String {
         var blocks: [String] = []
-        for h in headers.prefix(5) {
+        for h in headers.prefix(Self.globalOverviewHeaderLimit) {
             guard let s = h.summary else { continue }
             var lines: [String] = ["• \(String(h.title.prefix(60)))"]
             if !s.topics.isEmpty {
@@ -1014,7 +1200,7 @@ final class QAOrchestrator {
     /// captures the meeting's gist far better than 8 retrieved chunks ever
     /// could. Costs ~150-400 tokens depending on density; well inside our 2400
     /// context budget.
-    private static func overview(for meeting: Meeting) -> String? {
+    nonisolated private static func overview(for meeting: Meeting) -> String? {
         guard let summary = meeting.summary else { return nil }
         var lines: [String] = []
         if !summary.topics.isEmpty {

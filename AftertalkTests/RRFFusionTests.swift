@@ -1,4 +1,5 @@
 import XCTest
+import SwiftData
 @testable import Aftertalk
 
 /// Pure-logic tests for `HierarchicalRetriever.fuseRRF`. The fusion
@@ -94,5 +95,90 @@ final class RRFFusionTests: XCTestCase {
         let fused = HierarchicalRetriever.fuseRRF(dense: dense, bm25: bm25, topK: 1)
         XCTAssertEqual(fused.first?.score ?? 0, Float(0.65), accuracy: Float(0.001),
                        "Common hit keeps dense cosine — gate is tuned against it")
+    }
+}
+
+final class GlobalAskRouterTests: XCTestCase {
+    private func headers(_ count: Int, withSummaries: Bool = false) -> [MeetingHeader] {
+        (0..<count).map { index in
+            MeetingHeader(
+                id: UUID(),
+                title: "Meeting \(index + 1)",
+                recordedAt: Date(timeIntervalSince1970: Double(index)),
+                summary: withSummaries
+                    ? MeetingHeader.SummarySnapshot(
+                        decisions: index == 0 ? ["Ship the local prototype."] : [],
+                        topics: index.isMultiple(of: 2)
+                            ? ["AI product review", "Private transcription"]
+                            : ["Interview prep", "RAG quality"],
+                        actionItems: [],
+                        openQuestions: []
+                    )
+                    : nil
+            )
+        }
+    }
+
+    func testMetadataRouterDoesNotStealMentionCountQuestion() {
+        let answer = QAOrchestrator.answerMetadataQuestion(
+            "How many times was AI mentioned across the meeting?",
+            headers: headers(40)
+        )
+        XCTAssertNil(answer)
+    }
+
+    func testMetadataRouterStillAnswersMeetingCount() {
+        let answer = QAOrchestrator.answerMetadataQuestion(
+            "How many meetings do I have?",
+            headers: headers(2)
+        )
+        XCTAssertEqual(answer, "You have 2 meetings recorded.")
+    }
+
+    func testExtractMentionCountTermHandlesAiWordQuestion() {
+        let term = QAOrchestrator.extractMentionCountTerm(
+            "How many times has the AI word been mentioned across the meeting?"
+        )
+        XCTAssertEqual(term, "ai")
+    }
+
+    func testMentionCountAnswerAggregatesAcrossMeetings() {
+        let counts = [
+            MeetingMentionCount(meetingId: UUID(), title: "Research Sync", count: 4),
+            MeetingMentionCount(meetingId: UUID(), title: "Design Review", count: 2),
+        ]
+        let answer = QAOrchestrator.answerMentionCount(term: "ai", counts: counts, totalMeetings: 5)
+        XCTAssertTrue(answer.contains("AI was mentioned 6 times"))
+        XCTAssertTrue(answer.contains("across 2 meetings, out of 5 meetings"))
+    }
+
+    func testMentionCountsScanFullTranscriptsWithAiVariants() async throws {
+        let config = ModelConfiguration(
+            "MentionCountsTest",
+            schema: AftertalkPersistence.schema,
+            isStoredInMemoryOnly: true
+        )
+        let container = try ModelContainer(for: AftertalkPersistence.schema, configurations: [config])
+        let repository = MeetingsRepository(modelContainer: container)
+        _ = try await repository.createMeeting(
+            title: "AI Sync",
+            transcript: "AI came up first. Then A.I. came up again. Finally A I was said.",
+            duration: 10
+        )
+
+        let counts = try await repository.mentionCounts(for: "ai")
+
+        XCTAssertEqual(counts.first?.count, 3)
+    }
+
+    func testGlobalOverviewQuestionUsesAllSummaries() {
+        let answer = QAOrchestrator.answerGlobalOverviewQuestion(
+            "What kind of thing did this meeting talk about?",
+            headers: headers(4, withSummaries: true)
+        )
+        XCTAssertNotNil(answer)
+        XCTAssertTrue(answer?.contains("Across your 4 meetings") == true)
+        XCTAssertTrue(answer?.contains("AI product review") == true)
+        XCTAssertTrue(answer?.contains("RAG quality") == true)
     }
 }
