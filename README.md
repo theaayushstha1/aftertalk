@@ -22,13 +22,15 @@
 
 [**Demo**](#demo) · [**Architecture**](#architecture) · [**Q&A flow**](#qa-flow) · [**Stack**](#stack) · [**Privacy**](#privacy) · [**Build**](#build) · [**Status**](#status)
 
+[Decisions log](DECISIONS.md) · [How it was built](THOUGHT-PROCESS.md)
+
 </div>
 
 ---
 
 ## What it does
 
-| 🎙 Capture | 🧠 Understand | 💬 Ask |
+| **Capture** | **Understand** | **Ask** |
 |---|---|---|
 | Live Moonshine streaming ASR while you record. | Foundation Models extracts decisions, action items, topics, open questions. | Hold-to-talk Q&A on this meeting **or** all of them. |
 | Optional Parakeet polish for word-accurate timing. | NLContextual embeddings + BM25 + RRF for hybrid retrieval. | Streaming answers with citation pills, optional Kokoro TTS. |
@@ -44,15 +46,16 @@
 
 <table>
   <tr>
-    <td align="center"><img src="docs/assets/readme-record.png" width="148" alt="Live recording"><br><sub><b>Record</b></sub></td>
-    <td align="center"><img src="docs/assets/readme-meetings.png" width="148" alt="Meetings"><br><sub><b>Meetings</b></sub></td>
-    <td align="center"><img src="docs/assets/readme-summary.png" width="148" alt="Summary"><br><sub><b>Summary</b></sub></td>
-    <td align="center"><img src="docs/assets/readme-transcript.png" width="148" alt="Transcript"><br><sub><b>Transcript</b></sub></td>
-    <td align="center"><img src="docs/assets/readme-actions.png" width="148" alt="Actions"><br><sub><b>Actions</b></sub></td>
-    <td align="center"><img src="docs/assets/readme-ask.png" width="148" alt="Ask"><br><sub><b>Ask</b></sub></td>
-    <td align="center"><img src="docs/assets/readme-search.png" width="148" alt="Search"><br><sub><b>Search</b></sub></td>
-    <td align="center"><img src="docs/assets/readme-global-chat.png" width="148" alt="Global chat"><br><sub><b>Global chat</b></sub></td>
-    <td align="center"><img src="docs/assets/readme-settings.png" width="148" alt="Settings privacy"><br><sub><b>Privacy audit</b></sub></td>
+    <td align="center"><img src="docs/assets/readme-record.png" width="200" alt="Live recording"><br><sub><b>Record</b></sub></td>
+    <td align="center"><img src="docs/assets/readme-meetings.png" width="200" alt="Meetings"><br><sub><b>Meetings</b></sub></td>
+    <td align="center"><img src="docs/assets/readme-summary.png" width="200" alt="Summary"><br><sub><b>Summary</b></sub></td>
+    <td align="center"><img src="docs/assets/readme-transcript.png" width="200" alt="Transcript"><br><sub><b>Transcript</b></sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/assets/readme-actions.png" width="200" alt="Actions"><br><sub><b>Actions</b></sub></td>
+    <td align="center"><img src="docs/assets/readme-ask.png" width="200" alt="Ask"><br><sub><b>Ask</b></sub></td>
+    <td align="center"><img src="docs/assets/readme-search.png" width="200" alt="Search"><br><sub><b>Search</b></sub></td>
+    <td align="center"><img src="docs/assets/readme-global-chat.png" width="200" alt="Global chat"><br><sub><b>Global</b></sub></td>
   </tr>
 </table>
 
