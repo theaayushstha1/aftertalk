@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Quiet Studio detail screen. Editorial hero (eyebrow + 36pt title +
 /// stacked-avatar speaker row + meta tags), then a hairline tab strip with
@@ -25,6 +26,7 @@ struct MeetingDetailView: View {
     /// down + re-running ASR / diarization / chunking.
     @State private var reprocessing = false
     @State private var reprocessError: String?
+    @State private var transcriptCopied = false
 
     enum Tab: String, CaseIterable, Identifiable {
         case summary, transcript, actions
@@ -474,7 +476,7 @@ struct MeetingDetailView: View {
         if !chunks.isEmpty {
             ScrollViewReader { proxy in
                 VStack(alignment: .leading, spacing: 0) {
-                    QSEyebrow("Full transcript · \(chunks.count) turns", color: palette.faint)
+                    transcriptHeader("Full transcript · \(chunks.count) turns")
                         .padding(.bottom, 16)
                     ForEach(chunks) { c in
                         transcriptRow(c)
@@ -500,17 +502,62 @@ struct MeetingDetailView: View {
             }
         } else if !meeting.fullTranscript.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                QSEyebrow("Full transcript", color: palette.faint)
+                transcriptHeader("Full transcript")
                 Text(meeting.fullTranscript)
                     .font(.atBody(14.5))
                     .lineSpacing(5)
                     .foregroundStyle(palette.ink)
+                    // Long-press to select native iOS text — copy button in
+                    // the header copies the full body verbatim. We support
+                    // both because the long-press gesture isn't discoverable
+                    // for everyone, and the header button is handy when the
+                    // transcript is too long to scrub through.
+                    .textSelection(.enabled)
             }
         } else {
             unavailable(
                 title: "No transcript captured",
                 body: "ASR didn't see any speech, or the recording was too short to chunk."
             )
+        }
+    }
+
+    private func transcriptHeader(_ title: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            QSEyebrow(title, color: palette.faint)
+            Spacer(minLength: 12)
+            Button {
+                copyTranscript()
+            } label: {
+                Label(transcriptCopied ? "Copied" : "Copy", systemImage: transcriptCopied ? "checkmark" : "doc.on.doc")
+                    .font(.atMono(10.5, weight: .bold))
+                    .tracking(0.5)
+                    .textCase(.uppercase)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(transcriptCopied ? palette.accent : palette.mute)
+            .disabled(transcriptCopyText.isEmpty)
+        }
+    }
+
+    private var transcriptCopyText: String {
+        if !chunks.isEmpty {
+            return chunks.map { c in
+                "[\(formatTimecode(c.startSec)) \(speakerLabel(for: c))] \(c.text)"
+            }
+            .joined(separator: "\n\n")
+        }
+        return meeting.fullTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func copyTranscript() {
+        let text = transcriptCopyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        UIPasteboard.general.string = text
+        transcriptCopied = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.2))
+            transcriptCopied = false
         }
     }
 
@@ -531,6 +578,7 @@ struct MeetingDetailView: View {
                 .font(.atBody(14.5))
                 .lineSpacing(5)
                 .foregroundStyle(palette.ink)
+                .textSelection(.enabled)
         }
         .padding(.vertical, isHighlighted ? 12 : 9)
         .padding(.horizontal, isHighlighted ? 12 : 0)

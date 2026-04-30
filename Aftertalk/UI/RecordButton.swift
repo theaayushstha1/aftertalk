@@ -138,6 +138,11 @@ struct ImmersiveWaveform: View {
         let v = max(0.04, isActive ? raw : 0.1)
         let h = max(3.0, v * Double(height) * 0.8)
         let opacity = 0.6 + v * 0.4
+        // No `.animation(value:)` here. TimelineView already drives a fresh
+        // body at 60Hz, so the bar height is sampled smoothly. Adding an
+        // implicit animation on top fed SwiftUI non-monotonic timestamps and
+        // produced "Invalid sample AnimatablePair … time(0.0) > last time(…)"
+        // log spam plus stray bar geometry that bled through other surfaces.
         return RoundedRectangle(cornerRadius: 2, style: .continuous)
             .fill(
                 LinearGradient(
@@ -149,6 +154,5 @@ struct ImmersiveWaveform: View {
             .frame(maxWidth: .infinity)
             .frame(height: h)
             .opacity(opacity)
-            .animation(.easeOut(duration: 0.09), value: h)
     }
 }

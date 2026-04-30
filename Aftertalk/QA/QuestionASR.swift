@@ -21,14 +21,13 @@ enum QuestionASRError: Error, CustomStringConvertible {
 /// Records a short voice question and returns the final transcript on release.
 ///
 /// Owns its own MoonshineStreamer so it doesn't conflict with the meeting
-/// recorder's instance. Audio session runs in `.playAndRecord` + `.voiceChat`
-/// for the entire Q&A turn so Kokoro can speak the answer back through the
-/// same active session — switching to `.record` would silently disable the
-/// output unit and `engine.start()` on TTSWorker would fail with -10851
-/// ("Format not supported", 0 Hz output rate). Session stays live across
-/// listen → think → speak; deactivation happens when ChatThreadView
-/// disappears.
+/// recorder's instance. Audio session runs in `.playAndRecord` + `.measurement`
+/// while the user asks the question so Moonshine sees the cleanest possible
+/// mic signal. The orchestrator switches to a spoken-audio playback route
+/// before Kokoro reads the answer. Session deactivation happens when
+/// ChatThreadView disappears.
 @MainActor
+@Observable
 final class QuestionASR {
     private let log = Logger(subsystem: "com.theaayushstha.aftertalk", category: "QuestionASR")
     private let streamer: MoonshineStreamer
@@ -36,6 +35,12 @@ final class QuestionASR {
     private let capture = AudioCaptureService()
     private var deltaTask: Task<Void, Never>?
 
+    /// Streamed live during a hold-to-ask. Marked observable via the
+    /// `@Observable` macro on the class, so SwiftUI views that read this
+    /// property re-render whenever a new ASR delta lands. We dropped a
+    /// previous `onLiveTranscriptChanged` callback that bridged into a
+    /// view's `@State`: it raced with view rebuilds and the listening row
+    /// would freeze on the first word instead of streaming.
     private(set) var liveTranscript: String = ""
     private var committedLines: [String] = []
     private var activeLine: String = ""
@@ -73,6 +78,7 @@ final class QuestionASR {
         committedLines.removeAll()
         activeLine = ""
         liveTranscript = ""
+        publishLiveTranscript()
         awaitingFinal = false
         // Reset the gate's per-question state (pre-roll ring, in-speech
         // flag, stats) so a hangover from the previous turn can't gate a
@@ -82,8 +88,8 @@ final class QuestionASR {
             // Use the clean (`.measurement`-mode) path while the user is
             // talking — Apple's voice-processing IO unit (engaged by
             // `.voiceChat`) measurably degrades Moonshine accuracy on
-            // free-form questions. The orchestrator flips the session back
-            // to voiceChat before Kokoro speaks the answer.
+            // free-form questions. The orchestrator flips the session to
+            // high-quality playback before Kokoro speaks the answer.
             try await AudioSessionManager.shared.configureForVoiceQuestion()
         } catch {
             throw .sessionFailed(error)
@@ -103,10 +109,9 @@ final class QuestionASR {
 
     /// Stops capture, pads the encoder with trailing silence, then waits for
     /// the model's final `LineCompleted` event before returning the
-    /// transcript. Leaves the audio session active in `.playAndRecord` +
-    /// `.voiceChat` so Kokoro can play the answer back through the same
-    /// engine. The session is torn down by `ChatThreadView`'s lifecycle when
-    /// the user navigates away.
+    /// transcript. Leaves the audio session active; the orchestrator switches
+    /// to the playback route before Kokoro speaks. The session is torn down
+    /// by `ChatThreadView`'s lifecycle when the user navigates away.
     ///
     /// Why this is more than a `sleep(300)`:
     ///
@@ -207,6 +212,14 @@ final class QuestionASR {
             .filter { !$0.isEmpty }
             .joined(separator: " "))
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        publishLiveTranscript()
+    }
+
+    private func publishLiveTranscript() {
+        // Touching `liveTranscript` already drives observation; this hook
+        // remains as a single call site in case we want to add diagnostics
+        // (e.g. perf sampling) without sprinkling them across `apply(delta:)`.
+        _ = liveTranscript
     }
 
     private static func requestMicPermission() async -> Bool {

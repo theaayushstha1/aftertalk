@@ -34,6 +34,14 @@ struct GlobalChatView: View {
     /// `MeetingDetailView` on the source meeting and scrolls to the cited
     /// chunk on appear. `nil` while no jump is pending.
     @State private var citationJump: CitationJump?
+    /// Pinned to the final transcript at `endHold` so the listening row keeps
+    /// rendering the question while the persist + ask pipeline runs. Mid-hold
+    /// the listening row reads `ctx.questionASR.liveTranscript` directly via
+    /// the `@Observable` macro on `QuestionASR` — that's what makes the words
+    /// stream as the user speaks.
+    @State private var finalQuestionText = ""
+    @State private var typedQuestion = ""
+    @FocusState private var typedQuestionFocused: Bool
 
     private struct CitationJump: Identifiable {
         let meetingId: UUID
@@ -115,7 +123,7 @@ struct GlobalChatView: View {
             bodyArea(ctx: ctx)
             statusStrip
             bargeInBanner(ctx: ctx)
-            holdFAB(ctx: ctx)
+            askDock(ctx: ctx)
         }
         .task {
             await ensureThread(repository: ctx.repository)
@@ -129,6 +137,7 @@ struct GlobalChatView: View {
             autoRearmTask?.cancel()
             autoRearmTask = nil
             ctx.orchestrator.onAutoRearm = nil
+            finalQuestionText = ""
             Task {
                 await ctx.orchestrator.cancel()
                 await ctx.orchestrator.cleanupTTS()
@@ -324,8 +333,9 @@ struct GlobalChatView: View {
     private func listeningRow(ctx: QAContext) -> some View {
         VStack(spacing: 16) {
             QSEyebrow("Listening", color: palette.accent)
-            ImmersiveWaveform(height: 120, isActive: true)
-                .padding(.horizontal, 4)
+            ATListeningDots(color: palette.accent)
+                .frame(height: 28)
+                .frame(maxWidth: .infinity)
             Text(liveTranscriptDisplay(ctx: ctx))
                 .font(.atSerif(20, weight: .regular))
                 .lineSpacing(4)
@@ -340,7 +350,12 @@ struct GlobalChatView: View {
     }
 
     private func liveTranscriptDisplay(ctx: QAContext) -> String {
-        let raw = ctx.questionASR.liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Mirrors ChatThreadView — read live ASR while we're listening, then
+        // pin to `finalQuestionText` once endHold runs so the row keeps the
+        // question on screen during persist + ask.
+        let live = ctx.questionASR.liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pinned = finalQuestionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let raw = !live.isEmpty ? live : pinned
         if raw.isEmpty { return "\u{2026}" }
         return "\u{201C}\(raw)\u{201D}"
     }
@@ -447,26 +462,86 @@ struct GlobalChatView: View {
         )
     }
 
-    // MARK: - Hold FAB
+    // MARK: - Ask Dock
 
-    private func holdFAB(ctx: QAContext) -> some View {
-        VStack(spacing: 10) {
-            HoldDot(holding: holding)
-                .gesture(holdGesture(ctx: ctx))
-                // Match the per-meeting chat surface — disable hold when
-                // semantic Q&A isn't wired up so the user gets the explicit
-                // banner explanation instead of a hung-feeling tap.
-                .opacity(ctx.semanticQAAvailable ? 1.0 : 0.35)
-                .allowsHitTesting(ctx.semanticQAAvailable)
-            Text(holdCaption(ctx: ctx))
-                .font(.atMono(11, weight: .semibold))
-                .tracking(0.6)
-                .foregroundStyle(palette.faint)
-                .textCase(.uppercase)
+    private func askDock(ctx: QAContext) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(spacing: 8) {
+                HoldDot(holding: holding)
+                    .scaleEffect(0.82)
+                    .frame(width: 84, height: 84)
+                    .gesture(holdGesture(ctx: ctx))
+                    // Match the per-meeting chat surface — disable hold when
+                    // semantic Q&A isn't wired up so the user gets the explicit
+                    // banner explanation instead of a hung-feeling tap.
+                    .opacity(ctx.semanticQAAvailable ? 1.0 : 0.35)
+                    .allowsHitTesting(ctx.semanticQAAvailable)
+                Text(holdCaption(ctx: ctx))
+                    .font(.atMono(9.5, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundStyle(palette.faint)
+                    .textCase(.uppercase)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+
+            VStack(spacing: 8) {
+                HStack(alignment: .bottom, spacing: 8) {
+                    TextField(
+                        ctx.semanticQAAvailable ? "Type across meetings" : "Q&A unavailable",
+                        text: $typedQuestion,
+                        axis: .vertical
+                    )
+                    .font(.atBody(14.5))
+                    .foregroundStyle(palette.ink)
+                    .focused($typedQuestionFocused)
+                    .lineLimit(1...3)
+                    .submitLabel(.send)
+                    .disabled(!ctx.semanticQAAvailable || asking || holding)
+                    .onSubmit {
+                        Task { await submitTypedQuestion(ctx: ctx) }
+                    }
+
+                    Button {
+                        Task { await submitTypedQuestion(ctx: ctx) }
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(canSubmitTypedQuestion(ctx: ctx) ? palette.accent : palette.faint.opacity(0.45))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canSubmitTypedQuestion(ctx: ctx))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, minHeight: 58)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(palette.surface)
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(palette.line, lineWidth: 0.5))
+                )
+
+                QSEyebrow("Type instead", color: palette.faint)
+            }
+            .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 12)
-        .padding(.bottom, 36)
+        .padding(.horizontal, 18)
+        .padding(.top, 10)
+        .padding(.bottom, 24)
+        .background(
+            Rectangle()
+                .fill(palette.bg.opacity(0.96))
+                .overlay(alignment: .top) { QSDivider() }
+        )
+    }
+
+    private var typedQuestionTrimmed: String {
+        typedQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func canSubmitTypedQuestion(ctx: QAContext) -> Bool {
+        ctx.semanticQAAvailable && !asking && !holding && !typedQuestionTrimmed.isEmpty
     }
 
     private func holdCaption(ctx: QAContext) -> String {
@@ -523,6 +598,7 @@ struct GlobalChatView: View {
         autoRearmTask = nil
         ctx.orchestrator.clearBargeIn()
         await ctx.orchestrator.cancel()
+        finalQuestionText = ""
         do {
             try await ctx.questionASR.start()
         } catch {
@@ -538,6 +614,7 @@ struct GlobalChatView: View {
         autoRearmTask?.cancel()
         let task = Task { @MainActor in
             holding = true
+            finalQuestionText = ""
             do {
                 try await ctx.questionASR.start()
             } catch {
@@ -560,6 +637,7 @@ struct GlobalChatView: View {
                 await endHold(ctx: ctx)
             } else {
                 _ = await ctx.questionASR.stop()
+                finalQuestionText = ""
             }
         }
         autoRearmTask = task
@@ -577,7 +655,11 @@ struct GlobalChatView: View {
         // QuestionASR's tail-pad + final-delta wait.
         let releasedAt = ContinuousClock.now
         let question = await ctx.questionASR.stop()
-        guard !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        finalQuestionText = question
+        guard !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            finalQuestionText = ""
+            return
+        }
         guard let threadId else {
             lastError = "thread not ready"
             return
@@ -589,6 +671,55 @@ struct GlobalChatView: View {
             return
         }
         let result = await ctx.orchestrator.askGlobal(question: question, repository: ctx.repository, releasedAt: releasedAt)
+        if let result {
+            lastResult = result
+            do {
+                try await ctx.repository.appendChatMessage(
+                    threadId: threadId,
+                    role: "assistant",
+                    text: result.answer,
+                    citations: result.citations
+                )
+            } catch {
+                lastError = "save answer: \(error)"
+            }
+        }
+    }
+
+    private func submitTypedQuestion(ctx: QAContext) async {
+        let question = typedQuestionTrimmed
+        guard canSubmitTypedQuestion(ctx: ctx), !question.isEmpty else { return }
+
+        typedQuestion = ""
+        typedQuestionFocused = false
+        finalQuestionText = ""
+        autoRearmTask?.cancel()
+        autoRearmTask = nil
+        ctx.orchestrator.clearBargeIn()
+        await ctx.orchestrator.cancel()
+
+        asking = true
+        defer { asking = false }
+
+        if threadId == nil {
+            await ensureThread(repository: ctx.repository)
+        }
+        guard let threadId else {
+            lastError = "thread not ready"
+            typedQuestion = question
+            return
+        }
+
+        let sentAt = ContinuousClock.now
+        do {
+            try await ctx.repository.appendChatMessage(threadId: threadId, role: "user", text: question)
+        } catch {
+            lastError = "save question: \(error)"
+            typedQuestion = question
+            return
+        }
+
+        let result = await ctx.orchestrator.askGlobal(question: question, repository: ctx.repository, releasedAt: sentAt)
         if let result {
             lastResult = result
             do {

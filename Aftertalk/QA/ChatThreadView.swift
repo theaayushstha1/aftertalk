@@ -44,6 +44,14 @@ struct ChatThreadView: View {
     /// listen would result in two start() calls on QuestionASR — the
     /// streamer chokes when its capture session is reconfigured mid-stream.
     @State private var autoRearmTask: Task<Void, Never>?
+    /// Captured at the end of `endHold` so the listening row can keep
+    /// rendering the user's question while the persist + ask pipeline runs.
+    /// Live mid-hold display reads `questionASR.liveTranscript` directly via
+    /// the `@Observable` macro on `QuestionASR` — that's what makes the words
+    /// stream as the user speaks.
+    @State private var finalQuestionText = ""
+    @State private var typedQuestion = ""
+    @FocusState private var typedQuestionFocused: Bool
 
     init(meeting: Meeting,
          orchestrator: QAOrchestrator,
@@ -77,7 +85,7 @@ struct ChatThreadView: View {
             bodyArea
             statusStrip
             bargeInBanner
-            holdFAB
+            askDock
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(palette.bg.ignoresSafeArea())
@@ -116,6 +124,7 @@ struct ChatThreadView: View {
             autoRearmTask?.cancel()
             autoRearmTask = nil
             orchestrator.onAutoRearm = nil
+            finalQuestionText = ""
             Task { await orchestrator.cancel() }
         }
     }
@@ -286,8 +295,9 @@ struct ChatThreadView: View {
     private var listeningRow: some View {
         VStack(spacing: 16) {
             QSEyebrow("Listening", color: palette.accent)
-            ImmersiveWaveform(height: 120, isActive: true)
-                .padding(.horizontal, 4)
+            ATListeningDots(color: palette.accent)
+                .frame(height: 28)
+                .frame(maxWidth: .infinity)
             Text(liveTranscriptDisplay)
                 .font(.atSerif(20, weight: .regular))
                 .lineSpacing(4)
@@ -302,7 +312,13 @@ struct ChatThreadView: View {
     }
 
     private var liveTranscriptDisplay: String {
-        let raw = questionASR.liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Prefer the live ASR transcript while we're still listening so the
+        // words stream into the chat as the user speaks. Once `endHold` runs
+        // we capture the final text into `finalQuestionText` so the row keeps
+        // rendering the question while the persist + ask pipeline finishes.
+        let live = questionASR.liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pinned = finalQuestionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let raw = !live.isEmpty ? live : pinned
         if raw.isEmpty { return "\u{2026}" }
         return "\u{201C}\(raw)\u{201D}"
     }
@@ -414,27 +430,87 @@ struct ChatThreadView: View {
         }
     }
 
-    // MARK: - Hold FAB
+    // MARK: - Ask Dock
 
-    private var holdFAB: some View {
-        VStack(spacing: 10) {
-            HoldDot(holding: holding)
-                .gesture(holdGesture)
-                // Disable the gesture when semantic Q&A isn't wired up. The
-                // banner above already explains why; opening up a hold path
-                // that always returns the grounding-gate disclaimer would be
-                // worse UX than a clearly-disabled control.
-                .opacity(semanticQAAvailable ? 1.0 : 0.35)
-                .allowsHitTesting(semanticQAAvailable)
-            Text(holdCaption)
-                .font(.atMono(11, weight: .semibold))
-                .tracking(0.6)
-                .foregroundStyle(palette.faint)
-                .textCase(.uppercase)
+    private var askDock: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(spacing: 8) {
+                HoldDot(holding: holding)
+                    .scaleEffect(0.82)
+                    .frame(width: 84, height: 84)
+                    .gesture(holdGesture)
+                    // Disable the gesture when semantic Q&A isn't wired up. The
+                    // banner above already explains why; opening up a hold path
+                    // that always returns the grounding-gate disclaimer would be
+                    // worse UX than a clearly-disabled control.
+                    .opacity(semanticQAAvailable ? 1.0 : 0.35)
+                    .allowsHitTesting(semanticQAAvailable)
+                Text(holdCaption)
+                    .font(.atMono(9.5, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundStyle(palette.faint)
+                    .textCase(.uppercase)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+
+            VStack(spacing: 8) {
+                HStack(alignment: .bottom, spacing: 8) {
+                    TextField(
+                        semanticQAAvailable ? "Type a question" : "Q&A unavailable",
+                        text: $typedQuestion,
+                        axis: .vertical
+                    )
+                    .font(.atBody(14.5))
+                    .foregroundStyle(palette.ink)
+                    .focused($typedQuestionFocused)
+                    .lineLimit(1...3)
+                    .submitLabel(.send)
+                    .disabled(!semanticQAAvailable || asking || holding)
+                    .onSubmit {
+                        Task { await submitTypedQuestion() }
+                    }
+
+                    Button {
+                        Task { await submitTypedQuestion() }
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(canSubmitTypedQuestion ? palette.accent : palette.faint.opacity(0.45))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canSubmitTypedQuestion)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, minHeight: 58)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(palette.surface)
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(palette.line, lineWidth: 0.5))
+                )
+
+                QSEyebrow("Type instead", color: palette.faint)
+            }
+            .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 12)
-        .padding(.bottom, 36)
+        .padding(.horizontal, 18)
+        .padding(.top, 10)
+        .padding(.bottom, 24)
+        .background(
+            Rectangle()
+                .fill(palette.bg.opacity(0.96))
+                .overlay(alignment: .top) { QSDivider() }
+        )
+    }
+
+    private var typedQuestionTrimmed: String {
+        typedQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSubmitTypedQuestion: Bool {
+        semanticQAAvailable && !asking && !holding && !typedQuestionTrimmed.isEmpty
     }
 
     private var holdCaption: String {
@@ -492,6 +568,7 @@ struct ChatThreadView: View {
         // Barge-in: cancel any in-flight answer + drop queued TTS so the new
         // question doesn't pile on top of the previous one.
         await orchestrator.cancel()
+        finalQuestionText = ""
         do {
             try await questionASR.start()
         } catch {
@@ -509,6 +586,7 @@ struct ChatThreadView: View {
         autoRearmTask?.cancel()
         let task = Task { @MainActor in
             holding = true
+            finalQuestionText = ""
             do {
                 try await questionASR.start()
             } catch {
@@ -541,6 +619,7 @@ struct ChatThreadView: View {
                 await endHold()
             } else {
                 _ = await questionASR.stop()
+                finalQuestionText = ""
             }
         }
         autoRearmTask = task
@@ -559,7 +638,9 @@ struct ChatThreadView: View {
         // ~600 ms of trailing-silence pad we deliberately added.
         let releasedAt = ContinuousClock.now
         let question = await questionASR.stop()
+        finalQuestionText = question
         guard !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            finalQuestionText = ""
             return
         }
         guard let threadId else {
@@ -574,6 +655,55 @@ struct ChatThreadView: View {
             return
         }
         let result = await orchestrator.ask(question: question, in: meeting, releasedAt: releasedAt)
+        if let result {
+            lastResult = result
+            do {
+                try await repository.appendChatMessage(
+                    threadId: threadId,
+                    role: "assistant",
+                    text: result.answer,
+                    citations: result.citations
+                )
+            } catch {
+                lastError = "save answer: \(error)"
+            }
+        }
+    }
+
+    private func submitTypedQuestion() async {
+        let question = typedQuestionTrimmed
+        guard canSubmitTypedQuestion, !question.isEmpty else { return }
+
+        typedQuestion = ""
+        typedQuestionFocused = false
+        finalQuestionText = ""
+        autoRearmTask?.cancel()
+        autoRearmTask = nil
+        orchestrator.clearBargeIn()
+        await orchestrator.cancel()
+
+        asking = true
+        defer { asking = false }
+
+        if threadId == nil {
+            await ensureThread()
+        }
+        guard let threadId else {
+            lastError = "thread not ready"
+            typedQuestion = question
+            return
+        }
+
+        let sentAt = ContinuousClock.now
+        do {
+            try await repository.appendChatMessage(threadId: threadId, role: "user", text: question)
+        } catch {
+            lastError = "save question: \(error)"
+            typedQuestion = question
+            return
+        }
+
+        let result = await orchestrator.ask(question: question, in: meeting, releasedAt: sentAt)
         if let result {
             lastResult = result
             do {
