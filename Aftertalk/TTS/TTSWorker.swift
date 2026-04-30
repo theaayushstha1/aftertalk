@@ -36,6 +36,9 @@ actor TTSWorker {
     private var pending: Int = 0
     private var idleContinuations: [CheckedContinuation<Void, Never>] = []
     private var isRunning = false
+    /// Token returned by `NotificationCenter.addObserver` so we can release
+    /// the route-change observer at deinit.
+    nonisolated(unsafe) private var configChangeObserver: NSObjectProtocol?
 
     init() {
         // 24 kHz mono Float32 — the format every Kokoro `[Float]` chunk arrives in.
@@ -45,6 +48,47 @@ actor TTSWorker {
             channels: 1,
             interleaved: false
         )!
+        // Watch for engine configuration changes (AirPods connect / disconnect,
+        // CarPlay route flip, sample-rate change after an interruption, etc.).
+        // When the hardware route changes mid-playback, the cached
+        // `outputFormat` and `converter` go stale and subsequent buffers can
+        // crackle or drop frames. Flipping `isRunning = false` forces the
+        // next `enqueue` to rebuild the graph against the new hardware rate
+        // before scheduling. Inexpensive, prevents the most common cause of
+        // mid-sentence stutter we'd see on a real device.
+        let engineRef = engine
+        configChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engineRef,
+            queue: nil
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { await self.handleConfigurationChange() }
+        }
+    }
+
+    deinit {
+        if let token = configChangeObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+
+    /// Handle an `AVAudioEngineConfigurationChange` notification. The engine
+    /// stops itself when this fires; we mark `isRunning` false so the next
+    /// `enqueue` calls `ensureRunning` and rebuilds with the new hardware
+    /// rate. Any buffers already scheduled get dropped by `engine.stop()`,
+    /// which is the right behaviour: their cached conversion ratio no longer
+    /// matches the new output format.
+    private func handleConfigurationChange() {
+        log.info("TTSWorker: AVAudioEngine config changed — will rebuild graph on next enqueue")
+        isRunning = false
+        // Drop any pending counts so `waitUntilDone()` callers don't hang
+        // waiting for completion handlers that won't fire for the dropped
+        // buffers.
+        let waiters = idleContinuations
+        idleContinuations.removeAll()
+        pending = 0
+        for cont in waiters { cont.resume() }
     }
 
     /// Hand a single Kokoro chunk to the player. Returns immediately after the
