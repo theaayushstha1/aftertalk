@@ -465,75 +465,90 @@ struct GlobalChatView: View {
     // MARK: - Ask Dock
 
     private func askDock(ctx: QAContext) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(spacing: 8) {
-                HoldDot(holding: holding)
-                    .scaleEffect(0.82)
-                    .frame(width: 84, height: 84)
-                    .gesture(holdGesture(ctx: ctx))
-                    // Match the per-meeting chat surface — disable hold when
-                    // semantic Q&A isn't wired up so the user gets the explicit
-                    // banner explanation instead of a hung-feeling tap.
-                    .opacity(ctx.semanticQAAvailable ? 1.0 : 0.35)
-                    .allowsHitTesting(ctx.semanticQAAvailable)
-                Text(holdCaption(ctx: ctx))
-                    .font(.atMono(9.5, weight: .semibold))
-                    .tracking(0.5)
-                    .foregroundStyle(palette.faint)
-                    .textCase(.uppercase)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-
-            VStack(spacing: 8) {
-                HStack(alignment: .bottom, spacing: 8) {
-                    TextField(
-                        ctx.semanticQAAvailable ? "Type across meetings" : "Q&A unavailable",
-                        text: $typedQuestion,
-                        axis: .vertical
-                    )
-                    .font(.atBody(14.5))
-                    .foregroundStyle(palette.ink)
-                    .focused($typedQuestionFocused)
-                    .lineLimit(1...3)
-                    .submitLabel(.send)
-                    .disabled(!ctx.semanticQAAvailable || asking || holding)
-                    .onSubmit {
-                        Task { await submitTypedQuestion(ctx: ctx) }
-                    }
-
-                    Button {
-                        Task { await submitTypedQuestion(ctx: ctx) }
-                    } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundStyle(canSubmitTypedQuestion(ctx: ctx) ? palette.accent : palette.faint.opacity(0.45))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!canSubmitTypedQuestion(ctx: ctx))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, minHeight: 58)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(palette.surface)
-                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(palette.line, lineWidth: 0.5))
+        VStack(spacing: 6) {
+            // Mirrors ChatThreadView.askDock — single iMessage-style row,
+            // text field full width, mic + send swap inline based on whether
+            // there's a typed question pending.
+            HStack(alignment: .center, spacing: 10) {
+                TextField(
+                    ctx.semanticQAAvailable ? "Aftertalk" : "Q&A unavailable",
+                    text: $typedQuestion,
+                    axis: .vertical
                 )
+                .font(.atBody(15))
+                .foregroundStyle(palette.ink)
+                .focused($typedQuestionFocused)
+                .lineLimit(1...4)
+                .submitLabel(.send)
+                .disabled(!ctx.semanticQAAvailable || asking || holding)
+                .onSubmit {
+                    Task { await submitTypedQuestion(ctx: ctx) }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                QSEyebrow("Type instead", color: palette.faint)
+                if canSubmitTypedQuestion(ctx: ctx) {
+                    sendButton(ctx: ctx)
+                } else {
+                    inlineHoldDot(ctx: ctx)
+                }
             }
-            .frame(maxWidth: .infinity)
+            .padding(.leading, 16)
+            .padding(.trailing, 6)
+            .padding(.vertical, 6)
+            .frame(minHeight: 56)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(palette.surface)
+                    .overlay(Capsule(style: .continuous).stroke(palette.line, lineWidth: 0.5))
+            )
+
+            Text(holdCaption(ctx: ctx))
+                .font(.atMono(10, weight: .semibold))
+                .tracking(0.5)
+                .foregroundStyle(palette.faint)
+                .textCase(.uppercase)
         }
         .padding(.horizontal, 18)
         .padding(.top, 10)
-        .padding(.bottom, 24)
+        .padding(.bottom, 22)
         .background(
             Rectangle()
                 .fill(palette.bg.opacity(0.96))
                 .overlay(alignment: .top) { QSDivider() }
         )
+    }
+
+    private func inlineHoldDot(ctx: QAContext) -> some View {
+        ZStack {
+            if holding {
+                Circle()
+                    .fill(palette.accent.opacity(0.18))
+                    .frame(width: 40, height: 40)
+            }
+            Image(systemName: holding ? "mic.fill" : "mic.and.waveform.fill")
+                .font(.system(size: holding ? 18 : 19, weight: .semibold))
+                .foregroundStyle(holding ? palette.accent : palette.mute)
+                .symbolRenderingMode(.hierarchical)
+        }
+        .frame(width: 46, height: 46)
+        .contentShape(Circle())
+        .gesture(holdGesture(ctx: ctx))
+        .opacity(ctx.semanticQAAvailable ? 1.0 : 0.35)
+        .allowsHitTesting(ctx.semanticQAAvailable)
+        .accessibilityLabel("Hold to ask")
+    }
+
+    private func sendButton(ctx: QAContext) -> some View {
+        Button {
+            Task { await submitTypedQuestion(ctx: ctx) }
+        } label: {
+            Image(systemName: "arrow.up.circle.fill")
+                .font(.system(size: 32, weight: .semibold))
+                .foregroundStyle(palette.accent)
+                .frame(width: 46, height: 46)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Send question")
     }
 
     private var typedQuestionTrimmed: String {

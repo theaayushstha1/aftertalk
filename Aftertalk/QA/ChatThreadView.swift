@@ -433,76 +433,98 @@ struct ChatThreadView: View {
     // MARK: - Ask Dock
 
     private var askDock: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(spacing: 8) {
-                HoldDot(holding: holding)
-                    .scaleEffect(0.82)
-                    .frame(width: 84, height: 84)
-                    .gesture(holdGesture)
-                    // Disable the gesture when semantic Q&A isn't wired up. The
-                    // banner above already explains why; opening up a hold path
-                    // that always returns the grounding-gate disclaimer would be
-                    // worse UX than a clearly-disabled control.
-                    .opacity(semanticQAAvailable ? 1.0 : 0.35)
-                    .allowsHitTesting(semanticQAAvailable)
-                Text(holdCaption)
-                    .font(.atMono(9.5, weight: .semibold))
-                    .tracking(0.5)
-                    .foregroundStyle(palette.faint)
-                    .textCase(.uppercase)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-
-            VStack(spacing: 8) {
-                HStack(alignment: .bottom, spacing: 8) {
-                    TextField(
-                        semanticQAAvailable ? "Type a question" : "Q&A unavailable",
-                        text: $typedQuestion,
-                        axis: .vertical
-                    )
-                    .font(.atBody(14.5))
-                    .foregroundStyle(palette.ink)
-                    .focused($typedQuestionFocused)
-                    .lineLimit(1...3)
-                    .submitLabel(.send)
-                    .disabled(!semanticQAAvailable || asking || holding)
-                    .onSubmit {
-                        Task { await submitTypedQuestion() }
-                    }
-
-                    Button {
-                        Task { await submitTypedQuestion() }
-                    } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundStyle(canSubmitTypedQuestion ? palette.accent : palette.faint.opacity(0.45))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!canSubmitTypedQuestion)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, minHeight: 58)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(palette.surface)
-                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(palette.line, lineWidth: 0.5))
+        VStack(spacing: 6) {
+            // Single iMessage-style row: text field stretches the full width,
+            // hold-mic + send button live inside the same capsule. Everything
+            // is one input affordance — type or hold, your choice.
+            HStack(alignment: .center, spacing: 10) {
+                TextField(
+                    semanticQAAvailable ? "Aftertalk" : "Q&A unavailable",
+                    text: $typedQuestion,
+                    axis: .vertical
                 )
+                .font(.atBody(15))
+                .foregroundStyle(palette.ink)
+                .focused($typedQuestionFocused)
+                .lineLimit(1...4)
+                .submitLabel(.send)
+                .disabled(!semanticQAAvailable || asking || holding)
+                .onSubmit {
+                    Task { await submitTypedQuestion() }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                QSEyebrow("Type instead", color: palette.faint)
+                if canSubmitTypedQuestion {
+                    sendButton
+                } else {
+                    inlineHoldDot
+                }
             }
-            .frame(maxWidth: .infinity)
+            .padding(.leading, 16)
+            .padding(.trailing, 6)
+            .padding(.vertical, 6)
+            .frame(minHeight: 56)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(palette.surface)
+                    .overlay(Capsule(style: .continuous).stroke(palette.line, lineWidth: 0.5))
+            )
+
+            // Caption sits under the row so the user always knows what state
+            // the mic is in (Hold to ask / Release / Speaking …) without
+            // taking another row of vertical space.
+            Text(holdCaption)
+                .font(.atMono(10, weight: .semibold))
+                .tracking(0.5)
+                .foregroundStyle(palette.faint)
+                .textCase(.uppercase)
         }
         .padding(.horizontal, 18)
         .padding(.top, 10)
-        .padding(.bottom, 24)
+        .padding(.bottom, 22)
         .background(
             Rectangle()
                 .fill(palette.bg.opacity(0.96))
                 .overlay(alignment: .top) { QSDivider() }
         )
+    }
+
+    /// Compact mic glyph that sits inside the input capsule when the text
+    /// field is empty — visual analogue of the iMessage waveform glyph. Same
+    /// `holdGesture` as the original FAB so behaviour is identical: press to
+    /// open ASR, release to fire the question. Color shifts to `accent` while
+    /// held so the user gets immediate feedback.
+    private var inlineHoldDot: some View {
+        ZStack {
+            if holding {
+                Circle()
+                    .fill(palette.accent.opacity(0.18))
+                    .frame(width: 40, height: 40)
+            }
+            Image(systemName: holding ? "mic.fill" : "mic.and.waveform.fill")
+                .font(.system(size: holding ? 18 : 19, weight: .semibold))
+                .foregroundStyle(holding ? palette.accent : palette.mute)
+                .symbolRenderingMode(.hierarchical)
+        }
+        .frame(width: 46, height: 46)
+        .contentShape(Circle())
+        .gesture(holdGesture)
+        .opacity(semanticQAAvailable ? 1.0 : 0.35)
+        .allowsHitTesting(semanticQAAvailable)
+        .accessibilityLabel("Hold to ask")
+    }
+
+    private var sendButton: some View {
+        Button {
+            Task { await submitTypedQuestion() }
+        } label: {
+            Image(systemName: "arrow.up.circle.fill")
+                .font(.system(size: 32, weight: .semibold))
+                .foregroundStyle(palette.accent)
+                .frame(width: 46, height: 46)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Send question")
     }
 
     private var typedQuestionTrimmed: String {
