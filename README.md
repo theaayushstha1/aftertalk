@@ -245,15 +245,20 @@ Requirements: Xcode 17+, iOS 26+ device, Apple Developer signing, model bundles 
 Done:
 
 - Recording, live transcript, transcript detail, summaries, actions, search, per-meeting chat, global chat, Settings privacy audit.
+- Hybrid retrieval (BM25 + dense + Reciprocal Rank Fusion) so cross-meeting Q&A doesn't depend solely on token-averaged embedding similarity.
+- Full-transcript Q&A path for short meetings (≤ ~10k chars) — bypasses retrieval entirely and hands the LLM the whole transcript + structured summary, eliminating "I don't have that" disclaimers on broad questions about the active meeting.
+- Soft grounding gate that only refuses when there's truly no chunks AND no summary on the device, instead of refusing on low cosine.
+- Embedding fallback so a fresh-device install with NLContextual asset missing still saves meetings, summaries, and transcripts; semantic Q&A is gated with an explicit banner instead of failing silently.
+- Dim-mismatch filter at the vector store so degraded embeddings (written under fallback) can't poison search results.
 - Local model fallbacks for missing optional assets where possible.
-- Test coverage for VAD gating, sentence boundaries, and title sanitization.
-- Perf CSV export path wired through the app Documents folder.
+- Test coverage for VAD gating, sentence boundaries, title sanitization, and diarization cluster cleanup (regression test for the ghost-cycle bug).
+- Perf CSV export path wired through the app Documents folder via `UIFileSharingEnabled`.
 
 Still being hardened:
 
-- RAG recall for broad questions and older meetings.
-- Far-field classroom audio; a single iPhone mic cannot fully overcome distance, room reverb, or PC-speaker re-recording.
-- Single-channel diarization; labels are best-effort, while citations still point to the exact transcript excerpt.
+- Far-field classroom audio; a single iPhone mic cannot fully overcome distance, room reverb, or PC-speaker re-recording. The `RecordingProfile.farField` plumbing exists in `Aftertalk/Recording/RecordingProfile.swift` but is not user-selectable yet — adding the toggle plus a proper adaptive AGC is documented as future work.
+- Single-channel diarization on acoustically-degraded inputs (PC-speaker-played podcasts, lecture-hall reverb). Labels are best-effort; citations still point to the exact transcript excerpt regardless of speaker mis-assignment. FluidAudio's `OfflineDiarizerManager` + VBx is the documented next step, deferred because it's a different API surface that needs proper A/B against the current Pyannote streaming path.
+- Pipeline parallelism. Polish (Parakeet) and diarization (Pyannote) run in parallel today via `async let` in `MeetingProcessingPipeline`, but chunking + summary still wait for both. Fully background diarization (chunk + summarize from polish alone, then update speaker labels in place when diarize completes) is a pipeline refactor we deferred for submission stability.
 - Final perf chart from a real 30-minute meeting plus 10-minute Q&A run.
 
 ## License
