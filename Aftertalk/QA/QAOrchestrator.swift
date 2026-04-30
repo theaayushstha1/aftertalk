@@ -258,9 +258,61 @@ final class QAOrchestrator {
     private func flushPendingSpeechBuffer() -> Bool {
         let text = pendingSpeechText.trimmingCharacters(in: .whitespacesAndNewlines)
         pendingSpeechText = ""
-        guard !text.isEmpty else { return false }
-        appendSpeechTask(text)
+        let spokenText = Self.speechTextForTTS(text)
+        guard !spokenText.isEmpty else { return false }
+        appendSpeechTask(spokenText)
         return true
+    }
+
+    nonisolated static func speechTextForTTS(_ text: String) -> String {
+        var spoken = text
+            .replacingOccurrences(of: #"[“”"']"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: "`", with: "")
+            .replacingOccurrences(of: "*", with: "")
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+([,.:;!?])"#, with: "$1", options: .regularExpression)
+            .replacingOccurrences(of: #"([(\[])\s+"#, with: "$1", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+([)\]])"#, with: "$1", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // The streaming detector can soft-wrap long sentences, leaving a
+        // one- or two-word tail at the front of the next Kokoro utterance
+        // ("coding. They discussed ..."). Kokoro treats that as a standalone
+        // clip and audibly restarts. Turn the leading tail into a clause so
+        // it reads as one natural utterance. The chat bubble still preserves
+        // the exact generated text; this only affects speech.
+        spoken = mergeLeadingTinyFragment(in: spoken)
+
+        // Common artifact after quote stripping: `and" open AI` -> `and open AI`.
+        spoken = spoken.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let words = spoken.split { $0.isWhitespace }
+        if words.count == 1 {
+            let lowered = words[0].trimmingCharacters(in: .punctuationCharacters).lowercased()
+            if ["a", "an", "and", "in", "of", "or", "the", "to"].contains(lowered) {
+                return ""
+            }
+        }
+        return spoken
+    }
+
+    private nonisolated static func mergeLeadingTinyFragment(in text: String) -> String {
+        guard let match = text.range(
+            of: #"^([A-Za-z0-9][A-Za-z0-9+\- ]{0,24})[.!?]\s+([A-Z])"#,
+            options: .regularExpression
+        ) else {
+            return text
+        }
+        let matched = String(text[match])
+        guard let punctuation = matched.firstIndex(where: { ".!?".contains($0) }) else {
+            return text
+        }
+        let fragment = String(matched[..<punctuation]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let restStart = text[match].index(after: punctuation)
+        let rest = String(text[restStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !fragment.isEmpty, let first = rest.first else { return text }
+        return "\(fragment), and \(String(first).lowercased())\(rest.dropFirst())"
     }
 
     /// Append `text` to the ordered speech chain and return immediately. The
@@ -1049,6 +1101,9 @@ final class QAOrchestrator {
     nonisolated static func answerMetadataQuestion(_ question: String, headers: [MeetingHeader]) -> String? {
         let q = question.lowercased()
         let mentionsMeeting = q.contains("meeting")
+        if isContentQuestion(q) {
+            return nil
+        }
 
         let countPatterns = [
             "how many meetings", "how many meeting",
@@ -1073,6 +1128,17 @@ final class QAOrchestrator {
             return "Your most recent meeting is \"\(last.title)\"."
         }
         return nil
+    }
+
+    private nonisolated static func isContentQuestion(_ q: String) -> Bool {
+        let contentMarkers = [
+            "about", "across", "action", "actions", "ai", "covered", "decide",
+            "decided", "discuss", "discussed", "mention", "mentioned", "said",
+            "say", "talk", "talked", "topic", "topics", "transcript", "word"
+        ]
+        return contentMarkers.contains { marker in
+            q.range(of: #"\b\#(NSRegularExpression.escapedPattern(for: marker))\b"#, options: .regularExpression) != nil
+        }
     }
 
     /// Extracts the counted term from questions like "how many times was AI

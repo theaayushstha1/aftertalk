@@ -106,17 +106,23 @@ actor AudioSessionManager {
     /// a voice-band curve), which can make local TTS sound crackly or clipped.
     /// `.playback` + `.spokenAudio` gives AVAudioEngine a cleaner output path
     /// and a slightly larger IO buffer so the player has breathing room under
-    /// Foundation Models / Kokoro CPU load.
+    /// Foundation Models / Kokoro CPU load. Keep the option set conservative:
+    /// on-device testing showed `.allowBluetoothA2DP` can make `setCategory`
+    /// fail with `NSOSStatusErrorDomain Code=-50` on the current route.
     func configureForSpeechPlayback() throws(AudioSessionError) {
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(
                 .playback,
                 mode: .spokenAudio,
-                options: [.duckOthers, .allowBluetoothA2DP]
+                options: [.duckOthers]
             )
         } catch {
-            throw .configureFailed(error)
+            do {
+                try session.setCategory(.playback, mode: .spokenAudio, options: [])
+            } catch {
+                throw .configureFailed(error)
+            }
         }
         try? session.setPreferredIOBufferDuration(0.03)
         do {

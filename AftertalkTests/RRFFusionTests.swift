@@ -127,6 +127,14 @@ final class GlobalAskRouterTests: XCTestCase {
         XCTAssertNil(answer)
     }
 
+    func testMetadataRouterDoesNotStealContentCountQuestion() {
+        let answer = QAOrchestrator.answerMetadataQuestion(
+            "How many meetings talked about AI productivity and model quality?",
+            headers: headers(5)
+        )
+        XCTAssertNil(answer)
+    }
+
     func testMetadataRouterStillAnswersMeetingCount() {
         let answer = QAOrchestrator.answerMetadataQuestion(
             "How many meetings do I have?",
@@ -140,6 +148,30 @@ final class GlobalAskRouterTests: XCTestCase {
             "How many times has the AI word been mentioned across the meeting?"
         )
         XCTAssertEqual(term, "ai")
+    }
+
+    func testSpeechTextForTTSRemovesQuoteArtifacts() {
+        let spoken = QAOrchestrator.speechTextForTTS(
+            #"In "Model performance and user adoption" AI is discussed in "AI productivity improvements" and "open AI.""#
+        )
+        XCTAssertEqual(
+            spoken,
+            "In Model performance and user adoption AI is discussed in AI productivity improvements and open AI."
+        )
+    }
+
+    func testSpeechTextForTTSMergesLeadingTinyFragment() {
+        let spoken = QAOrchestrator.speechTextForTTS(
+            "coding. They discussed the subjective nature of model breakthroughs."
+        )
+        XCTAssertEqual(
+            spoken,
+            "coding, and they discussed the subjective nature of model breakthroughs."
+        )
+    }
+
+    func testSpeechTextForTTSDropsOrphanFunctionWord() {
+        XCTAssertEqual(QAOrchestrator.speechTextForTTS("In"), "")
     }
 
     func testMentionCountAnswerAggregatesAcrossMeetings() {
