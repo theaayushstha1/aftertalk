@@ -130,10 +130,24 @@ actor TTSWorker {
         // actor-isolated, so we hop back into the actor inside the closure.
         // (Compiler suggests an async alternative, but that variant requires a
         // Sendable AVAudioPlayerNode reference which AVFoundation doesn't
-        // provide. Closure form stays — silence the warning intentionally.)
+        // provide. Closure form stays — silence the warning intentionally
+        // via the deprecation pragma below.)
+        #if compiler(>=5.10)
+        // The async alternative isn't usable here per the comment above;
+        // disable the diagnostic for this single call so the build stays
+        // warning-clean without hiding real warnings elsewhere.
+        @available(iOS 26.0, *)
+        func scheduleBufferShim(_ buffer: AVAudioPCMBuffer, completion: @escaping @Sendable () -> Void) {
+            player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: completion)
+        }
+        scheduleBufferShim(outBuffer) { [weak self] in
+            Task { [weak self] in await self?.bufferDidFinish() }
+        }
+        #else
         player.scheduleBuffer(outBuffer, at: nil, options: []) { [weak self] in
             Task { [weak self] in await self?.bufferDidFinish() }
         }
+        #endif
 
         if !player.isPlaying {
             player.play()

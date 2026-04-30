@@ -167,12 +167,11 @@ enum ModelLocator {
     /// (Swift's static-let init is thread-safe and lock-free after the
     /// first hit).
     ///
-    /// `nonisolated(unsafe)` is sound here because:
-    ///   1. Swift's static-let init is itself thread-safe (dispatch_once).
-    ///   2. The Task value is immutable once created.
-    ///   3. The body captures only `Sendable` values (FileManager.default
-    ///      and URL are Sendable).
-    nonisolated(unsafe) private static let _bootstrap: Task<Void, Never> = Task.detached(priority: .utility) {
+    /// Static-let init is thread-safe (dispatch_once); the Task value is
+    /// itself Sendable and immutable once created; the body captures only
+    /// Sendable values (FileManager.default, URL). Swift 6 figures all
+    /// that out without an isolation annotation, so we let it.
+    private static let _bootstrap: Task<Void, Never> = Task.detached(priority: .utility) {
         let fm = FileManager.default
         // Two writable roots. Both created with intermediates so partial
         // failures (e.g. permissions) don't leave a half-state. `try?`

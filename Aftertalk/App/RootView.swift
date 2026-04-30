@@ -327,17 +327,15 @@ struct RootView: View {
                         // still hearing this, may revise". Same isFinal flag the
                         // Moonshine wrapper already exposes — the grounding-gate
                         // analog for live ASR.
-                        (
-                            Text(recording.committedTranscript)
-                                .font(.atBody(15))
-                                .foregroundColor(palette.ink)
-                            + Text(recording.committedTranscript.isEmpty || recording.tentativeTranscript.isEmpty ? "" : " ")
-                            + Text(recording.tentativeTranscript)
-                                .font(.atBody(15).italic())
-                                .foregroundColor(palette.faint)
-                        )
-                        .lineSpacing(4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        //
+                        // Built as a single `AttributedString` instead of
+                        // `Text + Text + Text` because the operator was
+                        // deprecated in iOS 26 in favour of interpolation /
+                        // attributed strings. AttributedString preserves
+                        // per-segment styling and renders as one inline run.
+                        Text(liveTranscriptAttributed)
+                            .lineSpacing(4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if recording.isRecording {
                         HStack(spacing: 8) {
@@ -385,6 +383,30 @@ struct RootView: View {
     /// re-renders (using a literal in `.id(...)` would still work but having
     /// a named constant makes the wiring obvious).
     private var transcriptTailAnchor: String { "transcript-tail" }
+
+    /// Build the live-transcript display as a single `AttributedString` so
+    /// the committed (full-ink) and tentative (dim italic) runs render
+    /// inline without using the iOS 26-deprecated `Text + Text + Text`
+    /// operator chain.
+    private var liveTranscriptAttributed: AttributedString {
+        var attributed = AttributedString(recording.committedTranscript)
+        attributed.font = .atBody(15)
+        attributed.foregroundColor = palette.ink
+
+        let needsSpace =
+            !recording.committedTranscript.isEmpty
+            && !recording.tentativeTranscript.isEmpty
+        if needsSpace {
+            attributed.append(AttributedString(" "))
+        }
+
+        var tentative = AttributedString(recording.tentativeTranscript)
+        tentative.font = .atBody(15).italic()
+        tentative.foregroundColor = palette.faint
+        attributed.append(tentative)
+
+        return attributed
+    }
 
     private func scrollTranscriptToTail(proxy: ScrollViewProxy, animated: Bool = true) {
         // The user complaint was "I have to swipe to catch up" — the cure is

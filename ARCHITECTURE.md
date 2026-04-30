@@ -154,13 +154,22 @@ Foundation Models hard cap: 4096 tokens (input + output). On iOS 26.4+ we get `S
 - AirPods + `.voiceChat` adds 80-150ms via SBC codec. Demo video uses wired or speaker.
 
 ## Latency budget (iPhone 17 Pro Max target)
-- TEN-VAD detection: 30ms
-- EoU prediction trigger: 80ms
-- ASR finalize (Moonshine): 150ms
-- Hierarchical retrieve: 50ms
-- Foundation Models first token: 33ms
-- Sentence boundary buffer + Kokoro first audio: ~400ms
-- **Total perceived TTFSW: ~750ms** (brief target was sub-3s; we beat it 4x)
+
+The brief asks for sub-3 s time-to-first-spoken-word. The exact number
+the shipped pipeline achieves is **pending re-measure** after the
+late-week VAD-gated streaming + Q&A tail-silence work — the prior
+budget here was based on a researched-but-not-shipped architecture
+(TEN-VAD + Pipecat SmartTurnV3) and a measurement of an older code
+path. Rather than carry stale numbers forward, the in-process
+`SessionPerfSampler` writes a per-session CSV at every recording so a
+clean number ships with the submission tag, not with this doc.
+
+For the rough cost breakdown of where the budget goes, see the
+`QAOrchestrator` source — `ttfswMillis` is documented inline as the
+moment-the-user-released-the-mic to first-sentence-handed-to-synth
+(Kokoro adds another ~250–300 ms before audio actually leaves the
+speaker, which we don't fold into the metric because FluidAudio
+doesn't expose a first-chunk callback yet).
 
 ## Streaming Q&A pipeline
 ```
