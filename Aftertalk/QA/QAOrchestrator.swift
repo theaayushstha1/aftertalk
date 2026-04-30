@@ -264,11 +264,18 @@ final class QAOrchestrator {
         stage = .idle
     }
 
-    func ask(question: String, in meeting: Meeting) async -> QAResult? {
+    /// `releasedAt` should be the moment the user's mic-release happened —
+    /// i.e. the timestamp captured *before* `QuestionASR.stop()` runs its
+    /// 600 ms silence pad + final-delta wait. When supplied, TTFSW is
+    /// measured from that point instead of "first LLM snapshot," which is
+    /// the honest definition the AirCaps brief asks for. When nil (legacy
+    /// callers, replays, snapshot tests) we fall back to first-snapshot
+    /// timing so the field still has a value.
+    func ask(question: String, in meeting: Meeting, releasedAt: ContinuousClock.Instant? = nil) async -> QAResult? {
         await cancel()
         let task = Task<QAResult?, Never> { [weak self] in
             guard let self else { return nil }
-            return await self.runAsk(question: question, in: meeting)
+            return await self.runAsk(question: question, in: meeting, releasedAt: releasedAt)
         }
         inFlight = task
         return await task.value
@@ -280,17 +287,17 @@ final class QAOrchestrator {
     /// the matched meetings' structured summaries — different prompt frame
     /// from the per-meeting path because there is no single "this meeting"
     /// to anchor against.
-    func askGlobal(question: String, repository: MeetingsRepository) async -> QAResult? {
+    func askGlobal(question: String, repository: MeetingsRepository, releasedAt: ContinuousClock.Instant? = nil) async -> QAResult? {
         await cancel()
         let task = Task<QAResult?, Never> { [weak self] in
             guard let self else { return nil }
-            return await self.runAskGlobal(question: question, repository: repository)
+            return await self.runAskGlobal(question: question, repository: repository, releasedAt: releasedAt)
         }
         inFlight = task
         return await task.value
     }
 
-    private func runAsk(question: String, in meeting: Meeting) async -> QAResult? {
+    private func runAsk(question: String, in meeting: Meeting, releasedAt: ContinuousClock.Instant? = nil) async -> QAResult? {
         let trimmed = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
@@ -357,7 +364,16 @@ final class QAOrchestrator {
         stage = .generating
         var detector = SentenceBoundaryDetector()
         var lastSnapshot = ""
-        var ttfswStart: ContinuousClock.Instant?
+        // `ttfswStart` is the honest reference for time-to-first-spoken-word:
+        // the moment the user released the mic. Falls back to first-LLM-
+        // snapshot only when callers haven't instrumented the release point
+        // (legacy / test paths). The end of the measurement is the moment
+        // we hand the *first sentence* to the TTS synth chain — what we
+        // call "first synth dispatch." Kokoro adds another ~250-300 ms
+        // before audio actually leaves the speaker; that gap is documented
+        // alongside the metric and not folded into the number itself,
+        // because we don't have a Kokoro first-chunk callback to measure it.
+        var ttfswStart: ContinuousClock.Instant? = releasedAt
         var ttfswMillis: Double?
         var spokenCount = 0
 
@@ -387,11 +403,6 @@ final class QAOrchestrator {
                     log.info("speak[\(spokenCount + 1, privacy: .public)/\(self.maxSpokenSentences, privacy: .public)] chain: \(preview, privacy: .public)")
                     speakChained(sentence)
                     spokenCount += 1
-                    // TTFSW now measures "first sentence handed to the synth
-                    // chain" — the user perceives this as the moment the voice
-                    // starts because Kokoro's first audio chunk lands ~300 ms
-                    // later regardless. This is also when the speaker icon
-                    // animates in the UI.
                     if ttfswMillis == nil, let start = ttfswStart {
                         ttfswMillis = start.duration(to: .now).aftertalkMillis
                     }
@@ -406,8 +417,21 @@ final class QAOrchestrator {
                     if spokenCount >= maxSpokenSentences { break }
                     let preview = sentence.prefix(48)
                     log.info("speak[trailing] chain: \(preview, privacy: .public)")
+                    if !sentence.isEmpty, stage != .speaking {
+                        stage = .speaking
+                        await enterSpeakingSession()
+                        armBargeIn()
+                    }
                     speakChained(sentence)
                     spokenCount += 1
+                    // Some answers complete before the streaming detector
+                    // sees a sentence-final punctuation token — the FIRST
+                    // sentence then arrives only via this `finalize` path.
+                    // Without setting `ttfswMillis` here the metric stays
+                    // nil and we silently report "no TTFSW" for those turns.
+                    if ttfswMillis == nil, let start = ttfswStart {
+                        ttfswMillis = start.duration(to: .now).aftertalkMillis
+                    }
                 }
             }
             log.info("stream complete: spokenCount=\(spokenCount, privacy: .public) answerLen=\(lastSnapshot.count, privacy: .public)")
@@ -448,7 +472,7 @@ final class QAOrchestrator {
         )
     }
 
-    private func runAskGlobal(question: String, repository: MeetingsRepository) async -> QAResult? {
+    private func runAskGlobal(question: String, repository: MeetingsRepository, releasedAt: ContinuousClock.Instant? = nil) async -> QAResult? {
         let trimmed = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
@@ -587,7 +611,9 @@ final class QAOrchestrator {
         stage = .generating
         var detector = SentenceBoundaryDetector()
         var lastSnapshot = ""
-        var ttfswStart: ContinuousClock.Instant?
+        // Honest TTFSW: anchored to mic-release when caller instrumented it.
+        // Same semantics as the per-meeting path — see `runAsk` for details.
+        var ttfswStart: ContinuousClock.Instant? = releasedAt
         var ttfswMillis: Double?
         var spokenCount = 0
 
@@ -621,8 +647,20 @@ final class QAOrchestrator {
                 let trailing = detector.finalize(lastSnapshot)
                 for sentence in trailing {
                     if spokenCount >= maxSpokenSentences { break }
+                    if !sentence.isEmpty, stage != .speaking {
+                        stage = .speaking
+                        await enterSpeakingSession()
+                        armBargeIn()
+                    }
                     speakChained(sentence)
                     spokenCount += 1
+                    // Mirror of the per-meeting fix: cover the case where
+                    // the first speakable sentence only emerges via the
+                    // trailing finalize path. Without this, TTFSW silently
+                    // reports nil for short / fast answers.
+                    if ttfswMillis == nil, let start = ttfswStart {
+                        ttfswMillis = start.duration(to: .now).aftertalkMillis
+                    }
                 }
             }
         } catch {

@@ -159,11 +159,22 @@ actor TTSWorker {
         for cont in waiters { cont.resume() }
     }
 
-    /// Tear down the engine. After this the worker must not be reused.
+    /// Tear down the engine. The worker is safe to reuse afterwards: the
+    /// next `enqueue` will rebuild the graph in `ensureRunning`. We
+    /// detach the player node here (instead of just stopping the engine)
+    /// because `engine.attach(player)` throws if the node is already
+    /// attached, and `MeetingDetailView.onDisappear` calls cleanup → next
+    /// chat open hits enqueue → ensureRunning → attach → throw without
+    /// this detach step.
     func shutdown() async {
         await cancel()
         if isRunning {
             engine.stop()
+            // `detach` is the inverse of `attach`. After a successful
+            // detach, `ensureRunning` is free to call `attach` again on
+            // the next utterance without AVAudioEngine raising
+            // "required condition is false: !nodeimpl->IsAttached()".
+            engine.detach(player)
             isRunning = false
         }
     }

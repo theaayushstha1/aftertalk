@@ -538,6 +538,10 @@ struct GlobalChatView: View {
         asking = true
         defer { asking = false }
 
+        // See `ChatThreadView.askVoice` for the rationale: timestamp the
+        // mic-release point so TTFSW measures from there, not from after
+        // QuestionASR's tail-pad + final-delta wait.
+        let releasedAt = ContinuousClock.now
         let question = await ctx.questionASR.stop()
         guard !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         guard let threadId else {
@@ -550,7 +554,7 @@ struct GlobalChatView: View {
             lastError = "save question: \(error)"
             return
         }
-        let result = await ctx.orchestrator.askGlobal(question: question, repository: ctx.repository)
+        let result = await ctx.orchestrator.askGlobal(question: question, repository: ctx.repository, releasedAt: releasedAt)
         if let result {
             lastResult = result
             do {

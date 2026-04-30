@@ -115,8 +115,35 @@ actor MeetingsRepository {
 
     func deleteMeeting(_ meetingId: UUID) throws {
         guard let meeting = try fetchMeeting(meetingId) else { return }
+        // Capture the WAV URL before the SwiftData cascade nulls the row
+        // out. Cascade handles `summary`, `chunks`, `speakers`, and
+        // `threads` because they're declared as `@Relationship` on
+        // `Meeting`. Two things it does NOT clean up that we have to do
+        // by hand:
+        //   1. `MeetingSummaryEmbedding` is keyed by meetingId UUID and
+        //      sits in its own SwiftData store — no cascade.
+        //   2. The persisted WAV file under
+        //      `<AppSupport>/Aftertalk/Recordings/` is filesystem state,
+        //      not SwiftData — cascade can't reach it.
+        // Leaving either behind is a privacy regression on a take-home
+        // whose pitch is "nothing leaves the device, and you control your
+        // data".
+        let audioURL = meeting.audioFileURL
+        let embeddingDescriptor = FetchDescriptor<MeetingSummaryEmbedding>(
+            predicate: #Predicate { $0.meetingId == meetingId }
+        )
+        for row in try modelContext.fetch(embeddingDescriptor) {
+            modelContext.delete(row)
+        }
         modelContext.delete(meeting)
         try modelContext.save()
+        if let audioURL {
+            // `try?` because the file may already be missing (the user
+            // deleted it manually, or the recording never persisted).
+            // Either way the SwiftData row is gone, so we don't surface
+            // a filesystem error to the caller.
+            try? FileManager.default.removeItem(at: audioURL)
+        }
     }
 
     /// Wipe everything the pipeline produces (chunks, summary, summary

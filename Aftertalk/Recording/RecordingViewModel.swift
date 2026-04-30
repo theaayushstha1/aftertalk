@@ -38,6 +38,12 @@ final class RecordingViewModel {
     var asrAddErrors: Int = 0
     var asrStarts: Int = 0
     var asrStops: Int = 0
+    /// VAD gate diagnostics — surfaced in `DebugOverlay` so the user can
+    /// confirm on device that silence is actually being shed (forwardRatio
+    /// should sit between 0.4 and 0.7 on conversational audio).
+    var vadInSpeech: Bool = false
+    var vadForwardRatio: Double = 0
+    var vadTransitions: Int = 0
 
     private var committedLines: [String] = []
     private var activeLine: String = ""
@@ -84,8 +90,14 @@ final class RecordingViewModel {
         let s = MoonshineStreamer(modelDirectory: modelDir)
         self.streamer = s
         self.pump = SamplePump(streamer: s)
-        self.pump.onSamples = { [weak self] count in
-            Task { @MainActor in self?.samplesIn += count }
+        self.pump.onSamples = { [weak self] count, vad in
+            Task { @MainActor in
+                guard let self else { return }
+                self.samplesIn += count
+                self.vadInSpeech = vad.inSpeech
+                self.vadForwardRatio = vad.forwardRatio
+                self.vadTransitions = vad.transitions
+            }
         }
         // AsyncStream is single-iteration. Start the consumers ONCE so they
         // survive across recording sessions; otherwise the second session's
@@ -138,6 +150,10 @@ final class RecordingViewModel {
             try await AudioSessionManager.shared.configureForRecording()
             try await streamer.start()
 
+            // Reset VAD state before mic samples start arriving so the
+            // first chunk of this session can't be classified by leftover
+            // in-speech / pre-roll state from the previous recording.
+            pump.resetGate()
             try capture.start(pump: pump)
             startMonotonic = .now
             ttftMillis = nil
@@ -354,14 +370,30 @@ final class RecordingViewModel {
 }
 
 /// Thin Sendable bridge between AVAudioEngine's tap callback (off-main) and
-/// the streamer. Holding a strong ref to MoonshineStreamer keeps it alive
-/// while the pump is captured in the audio tap closure.
+/// the streamer. Holds a strong ref to `MoonshineStreamer` so the streamer
+/// outlives the audio tap closure, and an `EnergyVADGate` that strips
+/// silence frames before they reach the encoder.
+///
+/// The pump runs on the audio render thread (single-writer) so the gate's
+/// `nonisolated(unsafe)` mutable state is safe without extra locking. See
+/// `EnergyVADGate.swift` for the architecture rationale.
 private final class SamplePump: ASRSamplePump, @unchecked Sendable {
     private let streamer: MoonshineStreamer
-    var onSamples: (@Sendable (Int) -> Void)?
+    private let gate = EnergyVADGate()
+    var onSamples: (@Sendable (Int, EnergyVADGate.Stats) -> Void)?
     init(streamer: MoonshineStreamer) { self.streamer = streamer }
     func append(samples: [Float], sampleRate: Int32) {
-        streamer.append(samples: samples, sampleRate: sampleRate)
-        onSamples?(samples.count)
+        let forwarded = gate.gate(samples: samples)
+        if !forwarded.isEmpty {
+            streamer.append(samples: forwarded, sampleRate: sampleRate)
+        }
+        // Always report gross input + gate stats so the UI can show input
+        // arriving even during silence (otherwise the user thinks the mic
+        // died) and so the debug overlay can verify the forward ratio.
+        onSamples?(samples.count, gate.snapshot())
     }
+    /// Wipe per-session gate state so a hangover in-speech flag, ring
+    /// buffer, or stats counter from the previous recording can't bleed
+    /// into the next one. Called from `RecordingViewModel.start`.
+    func resetGate() { gate.reset() }
 }

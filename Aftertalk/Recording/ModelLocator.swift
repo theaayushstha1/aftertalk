@@ -29,6 +29,11 @@ enum ModelLocator {
     }
 
     static func moonshineModelDirectory() -> URL {
+        // Medium streaming is the picked variant for transcription quality.
+        // On iPhone medium's per-chunk inference can drift past real-time on
+        // sustained continuous audio; we offset that with VAD-gated input
+        // (`EnergyVADGate`) so silence frames never reach Moonshine. See
+        // `Recording/EnergyVADGate.swift` for the rationale and tuning.
         let folderName = "moonshine-medium-streaming-en"
         let bundled = Bundle.main.bundleURL
             .appendingPathComponent("Models", isDirectory: true)

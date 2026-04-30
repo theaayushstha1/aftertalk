@@ -87,6 +87,11 @@ final class MoonshineStreamer: ASRService, @unchecked Sendable {
                 guard let self else { cont.resume(); return }
                 do {
                     if self.transcriber == nil {
+                        // Arch must match `ModelLocator.moonshineModelDirectory()`.
+                        // Medium is the picked variant; the VAD gate in
+                        // `RecordingViewModel.SamplePump` skips silence
+                        // frames so inference stays under real-time on
+                        // iPhone without sacrificing transcription quality.
                         let t = try Transcriber(modelPath: self.modelDirectory.path,
                                                 modelArch: .mediumStreaming)
                         let s = try t.createStream(updateInterval: 0.10)
@@ -207,8 +212,14 @@ final class MoonshineStreamer: ASRService, @unchecked Sendable {
             delta = nil
         }
         guard let delta else { return }
-        queue.async { [weak self] in
-            self?.continuation?.yield(delta)
-        }
+        // Yield directly from Moonshine's worker thread instead of hopping
+        // through `queue`. The shared input queue can hold a deep backlog
+        // of `addAudio` calls when the encoder is at peak load; routing
+        // delivery through the same lane forces ready transcript deltas to
+        // wait behind queued input, which the user perceives as transcript
+        // lag even though inference itself is keeping up.
+        // `AsyncStream.Continuation.yield` is documented thread-safe, so
+        // calling it from the listener thread is sound.
+        continuation?.yield(delta)
     }
 }

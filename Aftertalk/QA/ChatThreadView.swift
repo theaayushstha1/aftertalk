@@ -510,6 +510,11 @@ struct ChatThreadView: View {
         asking = true
         defer { asking = false }
 
+        // Capture the mic-release timestamp BEFORE `stop()` runs its silence
+        // pad + final-delta wait. That's the honest TTFSW reference point —
+        // measuring from after stop() returns would silently exclude the
+        // ~600 ms of trailing-silence pad we deliberately added.
+        let releasedAt = ContinuousClock.now
         let question = await questionASR.stop()
         guard !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return
@@ -525,7 +530,7 @@ struct ChatThreadView: View {
             lastError = "save question: \(error)"
             return
         }
-        let result = await orchestrator.ask(question: question, in: meeting)
+        let result = await orchestrator.ask(question: question, in: meeting, releasedAt: releasedAt)
         if let result {
             lastResult = result
             do {
