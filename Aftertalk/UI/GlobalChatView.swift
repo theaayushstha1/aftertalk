@@ -109,6 +109,9 @@ struct GlobalChatView: View {
         VStack(spacing: 0) {
             header
             scopeChip
+            if !ctx.semanticQAAvailable {
+                degradedQABanner
+            }
             bodyArea(ctx: ctx)
             statusStrip
             bargeInBanner(ctx: ctx)
@@ -418,12 +421,43 @@ struct GlobalChatView: View {
         }
     }
 
+    /// Banner shown when `NLContextualEmbedding` failed to load. Mirrors
+    /// the per-meeting `ChatThreadView.degradedQABanner` so the explanation
+    /// is consistent across the two chat surfaces.
+    private var degradedQABanner: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(palette.faint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Semantic Q&A unavailable")
+                    .font(.atBody(12.5, weight: .semibold))
+                    .foregroundStyle(palette.ink)
+                Text("Apple's contextual embedding asset hasn't loaded on this device. Recording and summary still work; restart the app or briefly connect to network so iOS can fetch the asset.")
+                    .font(.atBody(11.5))
+                    .foregroundStyle(palette.mute)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
+        .background(
+            palette.surface
+                .overlay(alignment: .bottom) { QSDivider() }
+        )
+    }
+
     // MARK: - Hold FAB
 
     private func holdFAB(ctx: QAContext) -> some View {
         VStack(spacing: 10) {
             HoldDot(holding: holding)
                 .gesture(holdGesture(ctx: ctx))
+                // Match the per-meeting chat surface — disable hold when
+                // semantic Q&A isn't wired up so the user gets the explicit
+                // banner explanation instead of a hung-feeling tap.
+                .opacity(ctx.semanticQAAvailable ? 1.0 : 0.35)
+                .allowsHitTesting(ctx.semanticQAAvailable)
             Text(holdCaption(ctx: ctx))
                 .font(.atMono(11, weight: .semibold))
                 .tracking(0.6)

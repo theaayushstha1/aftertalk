@@ -65,3 +65,25 @@ final class NLContextualEmbeddingService: EmbeddingService, @unchecked Sendable 
         return v.map { $0 / norm }
     }
 }
+
+/// No-op embedding fallback for when `NLContextualEmbedding` can't load on
+/// this device — typically a fresh airplane-mode iPhone whose system
+/// language asset hasn't been downloaded yet. Returns a fixed zero vector
+/// so chunks + summaries still persist (the rest of the pipeline doesn't
+/// have to special-case nil), but cosine similarity against zero vectors
+/// is degenerate so retrieval will return no hits and the grounding gate
+/// will fire. The chat surfaces gate themselves on
+/// `QAContext.semanticQAAvailable` and show a "Semantic Q&A unavailable"
+/// banner, so users see a clear explanation instead of confusing
+/// disclaimers from the orchestrator.
+final class NoOpEmbeddingService: EmbeddingService, @unchecked Sendable {
+    /// 8 floats is enough to keep persistence happy and small enough that
+    /// every saved chunk's storage overhead is negligible. The dimension
+    /// is intentionally not 512 — anyone reading SwiftData later can tell
+    /// from the size that this row was written in degraded mode.
+    let dimension: Int = 8
+
+    func embed(_ text: String) async throws -> [Float] {
+        return [Float](repeating: 0, count: dimension)
+    }
+}

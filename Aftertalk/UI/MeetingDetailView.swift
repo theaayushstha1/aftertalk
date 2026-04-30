@@ -641,6 +641,7 @@ struct MeetingDetailView: View {
                 orchestrator: ctx.orchestrator,
                 questionASR: ctx.questionASR,
                 repository: ctx.repository,
+                semanticQAAvailable: ctx.semanticQAAvailable,
                 onJumpToTranscript: { chunkId in
                     pendingScrollChunkId = chunkId
                     selectedTab = .transcript

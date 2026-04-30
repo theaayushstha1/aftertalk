@@ -12,6 +12,11 @@ struct ChatThreadView: View {
     let orchestrator: QAOrchestrator
     let questionASR: QuestionASR
     let repository: MeetingsRepository
+    /// `false` when `NLContextualEmbedding` couldn't load — semantic
+    /// retrieval would return zero hits and the user would just hear the
+    /// grounding-gate disclaimer. The view shows a banner + disables the
+    /// hold-to-ask FAB so the failure mode is explained, not silent.
+    let semanticQAAvailable: Bool
     /// Invoked when the user taps a citation. The host view dismisses this
     /// sheet, switches the meeting detail to the transcript tab, and scrolls
     /// to `chunkId`. `nil` when the host doesn't support transcript jumping
@@ -44,11 +49,13 @@ struct ChatThreadView: View {
          orchestrator: QAOrchestrator,
          questionASR: QuestionASR,
          repository: MeetingsRepository,
+         semanticQAAvailable: Bool = true,
          onJumpToTranscript: ((UUID) -> Void)? = nil) {
         self.meeting = meeting
         self.orchestrator = orchestrator
         self.questionASR = questionASR
         self.repository = repository
+        self.semanticQAAvailable = semanticQAAvailable
         self.onJumpToTranscript = onJumpToTranscript
         let mid = meeting.id
         self._messages = Query(
@@ -64,6 +71,9 @@ struct ChatThreadView: View {
         VStack(spacing: 0) {
             header
             scopeChip
+            if !semanticQAAvailable {
+                degradedQABanner
+            }
             bodyArea
             statusStrip
             bargeInBanner
@@ -352,6 +362,33 @@ struct ChatThreadView: View {
     /// Shown after the user's voice trips the barge-in energy gate during TTS
     /// playback. Auto-rearm makes this banner short-lived in practice — it
     /// shows during the ~6 s listen window and disappears when the
+    /// Banner shown when `NLContextualEmbedding` failed to load. The
+    /// recording / summary / transcript paths still work; this view
+    /// explains why hold-to-ask is disabled instead of letting the user
+    /// hold and get a generic disclaimer for every question.
+    private var degradedQABanner: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(palette.faint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Semantic Q&A unavailable")
+                    .font(.atBody(12.5, weight: .semibold))
+                    .foregroundStyle(palette.ink)
+                Text("Apple's contextual embedding asset hasn't loaded on this device. Recording and summary still work; restart the app or briefly connect to network so iOS can fetch the asset.")
+                    .font(.atBody(11.5))
+                    .foregroundStyle(palette.mute)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
+        .background(
+            palette.surface
+                .overlay(alignment: .bottom) { QSDivider() }
+        )
+    }
+
     /// orchestrator's next `runAsk` resets `didBargeIn`.
     @ViewBuilder
     private var bargeInBanner: some View {
@@ -383,6 +420,12 @@ struct ChatThreadView: View {
         VStack(spacing: 10) {
             HoldDot(holding: holding)
                 .gesture(holdGesture)
+                // Disable the gesture when semantic Q&A isn't wired up. The
+                // banner above already explains why; opening up a hold path
+                // that always returns the grounding-gate disclaimer would be
+                // worse UX than a clearly-disabled control.
+                .opacity(semanticQAAvailable ? 1.0 : 0.35)
+                .allowsHitTesting(semanticQAAvailable)
             Text(holdCaption)
                 .font(.atMono(11, weight: .semibold))
                 .tracking(0.6)

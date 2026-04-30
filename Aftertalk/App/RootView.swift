@@ -449,12 +449,25 @@ struct RootView: View {
         let container = context.container
         let repository = MeetingsRepository(modelContainer: container)
         let llm = FoundationModelsSummaryGenerator()
+        // Embedding service is the one component that can fail at init even
+        // on a healthy device — `NLContextualEmbedding` requires a system
+        // language asset that's normally pre-warmed by iOS but can be
+        // missing on a fresh airplane-mode device. Earlier we returned
+        // here on failure, which left `pipeline` and `qa` as nil — recording
+        // would still work but the post-recording pipeline never wired up.
+        // Now we fall back to a `NoOpEmbeddingService` so the pipeline
+        // constructs and the meeting + summary path stays functional;
+        // semantic Q&A is gated separately via `QAContext.semanticQAAvailable`
+        // and the chat surfaces show a banner instead of silently failing.
         let embeddings: any EmbeddingService
+        let semanticQAAvailable: Bool
         do {
             embeddings = try NLContextualEmbeddingService()
+            semanticQAAvailable = true
         } catch {
-            recording.lastError = "embedding: \(error)"
-            return
+            recording.lastError = "embedding fallback: \(error) — semantic Q&A disabled"
+            embeddings = NoOpEmbeddingService()
+            semanticQAAvailable = false
         }
         let store = SwiftDataVectorStore(modelContainer: container)
         // Bundle dir holding the FluidAudio Parakeet Core ML weights. Missing
@@ -525,7 +538,12 @@ struct RootView: View {
         }
         let orchestrator = QAOrchestrator(retriever: retriever, tts: tts)
         let questionASR = QuestionASR()
-        qa = QAContext(orchestrator: orchestrator, questionASR: questionASR, repository: repository)
+        qa = QAContext(
+            orchestrator: orchestrator,
+            questionASR: questionASR,
+            repository: repository,
+            semanticQAAvailable: semanticQAAvailable
+        )
         // Wire the interruption observer's TTS cancel hook now that the
         // orchestrator exists. We bind the closure here (not in
         // AftertalkApp.onAppear) because the orchestrator is constructed
