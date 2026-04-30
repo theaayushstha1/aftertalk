@@ -1,0 +1,24 @@
+{
+  "originHash" : "3fa514dff2f100dc31577249ca893da75d81d2925ec718b57913360e59169e25",
+  "pins" : [
+    {
+      "identity" : "fluidaudio",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/FluidInference/FluidAudio",
+      "state" : {
+        "revision" : "b82d4f2fc88aae6b2e405439de0957b9f923edd6",
+        "version" : "0.14.2"
+      }
+    },
+    {
+      "identity" : "moonshine-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/moonshine-ai/moonshine-swift.git",
+      "state" : {
+        "revision" : "60056058cc99ae6c4bf6742a975daa9cbf83f270",
+        "version" : "0.0.59"
+      }
+    }
+  ],
+  "version" : 3
+}

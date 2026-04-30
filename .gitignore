@@ -8,9 +8,14 @@ xcuserdata/
 *.moved-aside
 
 # Swift Package Manager
+# Ignore SPM build artefacts but commit the workspace lockfile so a clean
+# clone resolves the same Moonshine + FluidAudio versions a reviewer would
+# see in our commits — exactly what `Package.resolved` is for. The bare
+# `Package.resolved` ignore previously globbed both root SPM packages and
+# the Xcode workspace lock; we want the workspace one tracked.
 .build/
 Packages/
-Package.resolved
+/Package.resolved
 *.xcodeproj/project.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
 
