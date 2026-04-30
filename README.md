@@ -12,7 +12,7 @@ End-to-end loop is live on hardware: record → on-device transcript → diarize
 |---|---|---|
 | ASR (streaming) | Moonshine **medium-streaming-en** (245M, 6.65% WER, 303 MB) | Beats Whisper Large v3 on WER at a fraction of the size |
 | ASR (post-recording polish) | FluidAudio **Parakeet TDT 0.6B v2** | Lazy-warm Core ML; falls through if weights unbundled |
-| Diarization | FluidAudio **Pyannote 3.1 + WeSpeaker v2** | Runs in parallel with Parakeet via async-let; segments persist with the meeting |
+| Diarization | FluidAudio **Pyannote 3.1 + WeSpeaker v2** | Runs in parallel with Parakeet via async-let. Voice labels are best-effort — `clusteringThreshold=0.6` (more permissive than FluidAudio's 0.7 default so similar-timbre voices in the same acoustic path still split) plus an "oversample then collapse" post-merge that drops 1–2 segment ghosts under 5% airtime. Same-room recordings with two voices played through one speaker are inherently harder than separate-mic dual-channel capture; we surface the labels we can stand behind, and the chat citations still link back to the exact spoken excerpt regardless of speaker mis-assignment. |
 | LLM | Apple **Foundation Models** (iOS 26) | 4096-token cap, ~30 tok/s on A18; map-reduce for long meetings |
 | Embeddings | Apple **NLContextualEmbedding** (system asset, 512-dim) | No separate weights to ship; gte-small Core ML kept as a tradeoff swap if recall@3 ever lags |
 | Vector store | **SwiftDataVectorStore** — SwiftData typed rows + in-process cosine search | sqlite-vec is the planned upgrade once meeting count climbs into the tens |

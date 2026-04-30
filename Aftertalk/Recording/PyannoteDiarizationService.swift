@@ -71,22 +71,28 @@ actor PyannoteDiarizationService: DiarizationService {
         }
 
         // Diarization tuning. FluidAudio docs: "Lower = more speakers."
-        // Default 0.7 collapses two voices captured through the same acoustic
-        // path (podcast played through speakers → phone mic, two hosts with
-        // similar timbre) into one cluster. We push to 0.5 — past 0.55 we
-        // start splitting genuine same-speaker turns into ghost clusters,
-        // but `collapseSpuriousClusters` cleans those up by merging tiny
-        // ghosts (< 2 segments AND < 5% airtime) into their nearest neighbor
-        // by centroid distance. Standard "oversample then collapse" pattern.
         //
-        // `minSpeechDuration=0.4` (vs default 1.0) is critical for the second
-        // speaker on lopsided conversations — backchannels and 1-2 word
-        // confirmations from the quieter host need to contribute embeddings,
-        // otherwise FluidAudio never sees enough audio from them to register
-        // a separate cluster at all.
+        // History: the default `0.7` collapses similar-timbre voices captured
+        // through the same acoustic path (podcast → phone mic). We pushed to
+        // `0.5` to recover the second host on those demos but found that
+        // shifting the boundary that far also splits genuine same-speaker
+        // turns into 1-2 segment ghost clusters at a much higher rate. Net
+        // experience was "too many speakers" instead of "too few."
+        //
+        // `0.6` is the empirical sweet spot — still more permissive than
+        // FluidAudio's default so a quieter podcast co-host still gets its
+        // own cluster, but the ghost rate drops dramatically. Real ghosts
+        // that survive at 0.6 are caught by `collapseSpuriousClusters` (≤2
+        // segments AND <5% airtime → merged into nearest centroid).
+        //
+        // `minSpeechDuration=0.5` (vs default 1.0) preserves the original
+        // intent — short backchannels and 1-2 word confirmations from a
+        // quieter host still contribute embeddings — without admitting
+        // sub-half-second blips that the prior 0.4 setting was promoting
+        // into spurious "speakers."
         var cfg = DiarizerConfig.default
-        cfg.clusteringThreshold = 0.5
-        cfg.minSpeechDuration = 0.4
+        cfg.clusteringThreshold = 0.6
+        cfg.minSpeechDuration = 0.5
         let manager = DiarizerManager(config: cfg)
         // initialize(models:) is synchronous + consuming. Do NOT `await` it.
         manager.initialize(models: models)
@@ -166,21 +172,31 @@ actor PyannoteDiarizationService: DiarizationService {
 
     #if canImport(FluidAudio)
     /// "Oversample then collapse." FluidAudio's online `SpeakerManager` is
-    /// permissive at the default `clusteringThreshold=0.7` — it correctly
-    /// registers every real voice but also occasionally spawns a 1-2 segment
-    /// ghost cluster from same-voice embedding drift on short utterances.
-    /// We catch those here: any cluster that owns < `minSegments` AND
+    /// permissive at our `clusteringThreshold=0.6` — it correctly registers
+    /// every real voice but also occasionally spawns a 1-2 segment ghost
+    /// cluster from same-voice embedding drift on short utterances. We
+    /// catch those here: any cluster that owns ≤ `minSegments` AND
     /// < `minAirtimeFraction` of total speaking time is reassigned to its
     /// nearest neighbor by centroid cosine distance.
     ///
-    /// Why post-processing instead of tightening the threshold:
-    ///   - threshold=0.7 → boundary 0.84 → real speakers at distance 0.85-0.95
-    ///     spawn ghosts (over-segmentation)
-    ///   - threshold=0.8 → boundary 0.96 → similar voices (same gender, similar
-    ///     pitch on a podcast) at distance 0.7-0.9 collapse into one cluster
-    ///     (under-segmentation)
-    /// No single threshold satisfies both. The permissive default + post-merge
-    /// is the standard fix in the speaker-diarization literature.
+    /// Why post-processing instead of tightening the threshold further:
+    ///   - threshold=0.6 (current) → boundary 0.72 → real speakers split,
+    ///     occasional ghosts at 1-2 segments
+    ///   - threshold=0.7 (default) → boundary 0.84 → similar-timbre podcast
+    ///     hosts collapse to one cluster (under-segmentation)
+    /// No single threshold satisfies both. Permissive threshold +
+    /// post-merge is the standard fix in the speaker-diarization
+    /// literature.
+    ///
+    /// We do NOT short-circuit when there are exactly 2 clusters — earlier
+    /// versions of this function did that on the assumption "FluidAudio
+    /// said two voices, trust it." But a real recording with one speaker +
+    /// one ghost arrives at us as exactly two clusters; trusting the count
+    /// in that case told the user "two voices" when there was one. The
+    /// ghost criteria (≤ minSegments AND < minAirtimeFraction) apply to
+    /// the 2-cluster case the same way they apply to 3+, with a fallback
+    /// guard below that prevents collapsing when *every* cluster qualifies
+    /// as small (a genuinely short recording — keep what you've got).
     static func collapseSpuriousClusters(
         _ segments: [TimedSpeakerSegment],
         logger: Logger,
@@ -188,31 +204,36 @@ actor PyannoteDiarizationService: DiarizationService {
         minAirtimeFraction: Float = 0.05
     ) -> [TimedSpeakerSegment] {
         guard !segments.isEmpty else { return [] }
-        // Aggregate per speaker: count, airtime, summed embedding for centroid.
-        var byId: [String: (count: Int, airtime: Float, sumEmb: [Float])] = [:]
+        // Aggregate per speaker: count, airtime, summed embedding for centroid,
+        // mean qualityScore (averaged across segments belonging to the cluster).
+        var byId: [String: (count: Int, airtime: Float, sumEmb: [Float], qualitySum: Float)] = [:]
         for seg in segments {
             let dur = seg.endTimeSeconds - seg.startTimeSeconds
             if let prev = byId[seg.speakerId] {
                 var emb = prev.sumEmb
                 let n = min(emb.count, seg.embedding.count)
                 for i in 0..<n { emb[i] += seg.embedding[i] }
-                byId[seg.speakerId] = (prev.count + 1, prev.airtime + dur, emb)
+                byId[seg.speakerId] = (prev.count + 1, prev.airtime + dur, emb, prev.qualitySum + Float(seg.qualityScore))
             } else {
-                byId[seg.speakerId] = (1, dur, seg.embedding)
+                byId[seg.speakerId] = (1, dur, seg.embedding, Float(seg.qualityScore))
             }
         }
-        guard byId.count > 1 else {
-            // Only one cluster, nothing to merge.
-            return segments
+
+        let totalAirtime = segments.reduce(Float(0)) { $0 + ($1.endTimeSeconds - $1.startTimeSeconds) }
+
+        // One log line per raw cluster so a reviewer reading the device log
+        // can see exactly what FluidAudio handed us before any collapse runs.
+        // Visibility was the missing piece during the podcast-demo bug —
+        // we knew the *result* was wrong but couldn't tell whether it was
+        // FluidAudio mis-clustering or our cleanup mis-merging.
+        for (id, e) in byId {
+            let airtimeFrac = totalAirtime > 0 ? (e.airtime / totalAirtime) : 0
+            let avgQuality = Float(e.count) > 0 ? (e.qualitySum / Float(e.count)) : 0
+            logger.info("collapse: raw cluster \(id, privacy: .public) segments=\(e.count, privacy: .public) airtime=\(e.airtime, privacy: .public)s airFrac=\(airtimeFrac, privacy: .public) avgQuality=\(avgQuality, privacy: .public)")
         }
-        // Two clusters means FluidAudio thinks there are two distinct voices.
-        // Do not second-guess that — collapsing here is the bug the user hit:
-        // a podcast with one dominant host + one quieter host produced two
-        // clusters where the quieter host had < 8% airtime, and we collapsed
-        // them. Preserve any 2-cluster outcome intact; the ghost-cluster
-        // problem only manifests at 3+ clusters in practice.
-        guard byId.count > 2 else {
-            logger.info("collapse: 2 clusters detected — trusting FluidAudio, no merge")
+
+        guard byId.count > 1 else {
+            logger.info("collapse: 1 raw cluster — nothing to merge")
             return segments
         }
 
@@ -223,14 +244,14 @@ actor PyannoteDiarizationService: DiarizationService {
             centroids[id] = e.sumEmb.map { $0 * inv }
         }
 
-        let totalAirtime = segments.reduce(Float(0)) { $0 + ($1.endTimeSeconds - $1.startTimeSeconds) }
-
-        // Decide which clusters are spurious. Don't collapse all clusters:
-        // if every cluster qualifies as small, the recording was just short —
-        // keep them as-is.
+        // Decide which clusters are spurious. Use `<=` (not `<`) so a 2-segment
+        // ghost is caught — the prior `< 2` only ever flagged 1-segment ghosts
+        // even though the comment said "1-2 segment". Don't collapse when every
+        // cluster qualifies as small: that means the recording was just short,
+        // and merging clusters would erase real speakers.
         var remap: [String: String] = [:]
         let candidates = byId.filter { (_, e) in
-            e.count < minSegments && (e.airtime / max(totalAirtime, 1)) < minAirtimeFraction
+            e.count <= minSegments && (e.airtime / max(totalAirtime, 1)) < minAirtimeFraction
         }
         guard candidates.count < byId.count else {
             logger.info("collapse: every cluster is small — leaving \(byId.count, privacy: .public) clusters intact")
@@ -282,6 +303,8 @@ actor PyannoteDiarizationService: DiarizationService {
             logger.info("collapse: no spurious clusters detected — \(byId.count, privacy: .public) speakers kept")
             return segments
         }
+        let collapsedCount = byId.count - remap.count
+        logger.info("collapse: \(byId.count, privacy: .public) raw → \(collapsedCount, privacy: .public) final speakers (merged \(remap.count, privacy: .public) ghosts)")
 
         // Chain-resolve: when ghost A → ghost B and ghost B → real C, A must
         // also resolve to C. The original single-hop apply left dangling
