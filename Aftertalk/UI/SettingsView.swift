@@ -223,10 +223,16 @@ struct SettingsView: View {
                 state: pyannote ? .loaded : .unavailable
             ),
             ModelEntry(
-                name: "Moonshine Tiny",
+                name: "Moonshine medium streaming",
                 role: "Speech-to-text · streaming",
-                size: "94 MB",
+                size: "290 MB",
                 state: moonshine ? .loaded : .unavailable
+            ),
+            ModelEntry(
+                name: "Parakeet TDT 0.6B v2",
+                role: "Post-recording polish · word timings",
+                size: "550 MB",
+                state: hasFile(at: ModelLocator.parakeetModelDirectory()) ? .loaded : .unavailable
             ),
             ModelEntry(
                 name: "Foundation Models",
@@ -241,9 +247,9 @@ struct SettingsView: View {
                 state: kokoro ? .loaded : .unavailable
             ),
             ModelEntry(
-                name: "gte-small",
+                name: "NLContextualEmbedding",
                 role: "Embeddings · retrieval",
-                size: "37 MB",
+                size: "system · 512-dim",
                 state: .loaded
             ),
         ]

@@ -14,13 +14,13 @@ End-to-end loop is live on hardware: record → on-device transcript → diarize
 | ASR (post-recording polish) | FluidAudio **Parakeet TDT 0.6B v2** | Lazy-warm Core ML; falls through if weights unbundled |
 | Diarization | FluidAudio **Pyannote 3.1 + WeSpeaker v2** | Runs in parallel with Parakeet via async-let; segments persist with the meeting |
 | LLM | Apple **Foundation Models** (iOS 26) | 4096-token cap, ~30 tok/s on A18; map-reduce for long meetings |
-| Embeddings | gte-small Core ML, 384-dim (NLContextual fallback) | ~6 MB |
-| Vector store | SwiftData + sqlite-vec | One SQLite file, MATCH joins back to typed rows |
+| Embeddings | Apple **NLContextualEmbedding** (system asset, 512-dim) | No separate weights to ship; gte-small Core ML kept as a tradeoff swap if recall@3 ever lags |
+| Vector store | **SwiftDataVectorStore** — SwiftData typed rows + in-process cosine search | sqlite-vec is the planned upgrade once meeting count climbs into the tens |
 | Summary | `@Generable MeetingSummary` (decisions / actions / topics / openQs) | Speaker context injected into system prompt for attribution |
-| Retriever | Hierarchical 3-layer (summary → chunk → ContextPacker) | Grounding gate at cosine 0.40; 2,400-token budget |
+| Retriever | Hierarchical 3-layer (summary → chunk → ContextPacker) | Grounding gate at cosine 0.22; 2,400-token budget |
 | Q&A | `QAOrchestrator` — retrieve → snapshot stream → sentence detector → TTS prefetch | Per-meeting + global chat threads, citations carry speaker IDs |
 | TTS | FluidAudio **Kokoro 82M ANE** (24 kHz Float32, AVAudioConverter to 48 kHz) | Lazy-warmed on first chat open to keep iPhone Air under jetsam ceiling |
-| Barge-in | Mic stays armed during TTS; tap-to-stop + auto-rearm window | Energy-based gate at -32 dB / 180 ms hold (Silero v5 is the planned VAD; TEN-VAD + SmartTurnV3 researched and deferred) |
+| Turn-taking | Hold-to-talk only (no auto barge-in shipped) | Energy-gated barge-in is wired but disabled — the controller no-ops to avoid mid-answer self-interruption from Kokoro's own output bleeding back through the mic. TEN-VAD + Pipecat SmartTurnV3 EoU prediction researched and deferred to a hardening sprint. |
 
 ## Architecture
 
@@ -28,9 +28,9 @@ End-to-end loop is live on hardware: record → on-device transcript → diarize
 flowchart LR
     mic([Mic 48 kHz]) -->|float32| asr[Moonshine streaming ASR]
     asr -->|deltas| ui1[Live transcript]
-    asr -->|finalized| chunker[ChunkIndexer<br/>30 s windows]
-    chunker --> embed[gte-small Core ML]
-    embed --> store[(SwiftData<br/>sqlite-vec)]
+    asr -->|finalized| chunker[ChunkIndexer<br/>4-sentence windows + overlap]
+    chunker --> embed[NLContextualEmbedding<br/>512-dim]
+    embed --> store[(SwiftDataVectorStore<br/>typed rows + cosine)]
     chunker --> sumgen[Foundation Models<br/>@Generable MeetingSummary]
     sumgen --> store
 
@@ -54,7 +54,7 @@ sequenceDiagram
     participant ASR as Moonshine ASR
     participant Q as QAOrchestrator
     participant R as HierarchicalRetriever
-    participant S as SwiftData + sqlite-vec
+    participant S as SwiftDataVectorStore
     participant L as Foundation Models
     participant T as TTS
 
@@ -64,7 +64,7 @@ sequenceDiagram
     R->>S: cosine search on chunk embeddings
     S-->>R: top chunks
     R-->>Q: hits + topScore
-    alt topScore < 0.40
+    alt topScore < 0.22
         Q->>T: speak("I don't have that…")
     else grounded
         Q->>Q: build prompt = system + overview + chunks + question
@@ -137,9 +137,9 @@ The Quiet Studio design system — 14 screens against shared `QSEyebrow / QSTitl
 
 **Day 1 — Live ASR.** AVAudioEngine 48 → 16 kHz capture, Moonshine streaming wrapper with single-warm + per-utterance start/stop, debug overlay surfacing TTFT and event counters.
 
-**Day 2 — Summary + RAG.** SwiftData model (Meeting, TranscriptChunk, SpeakerLabel, MeetingSummaryRecord). gte-small Core ML embedding service. sqlite-vec vector store. `@Generable MeetingSummary` over Foundation Models. Chunker with 30 s windows.
+**Day 2 — Summary + RAG.** SwiftData model (Meeting, TranscriptChunk, SpeakerLabel, MeetingSummaryRecord). Apple `NLContextualEmbedding` (512-dim) wired behind an `EmbeddingService` protocol so a Core ML gte-small swap is a one-file change. `SwiftDataVectorStore` with in-process cosine search keyed on `MeetingSummaryEmbedding` rows; sqlite-vec deferred until meeting count justifies it. `@Generable MeetingSummary` over Foundation Models. ChunkIndexer with 4-sentence windows + 1-sentence overlap.
 
-**Day 3 — Voice Q&A loop.** Hold-to-talk Moonshine question ASR. Hierarchical retriever. ContextPacker with explicit 2,400-token budget. Grounding gate at cosine 0.40. QAOrchestrator with snapshot streaming → SentenceBoundaryDetector → TTS prefetch. Per-meeting chat thread (ChatThread + ChatMessage). Map-reduce summarization for long meetings (>7,500 chars). Moonshine swap to medium-streaming for 1.2 pp WER improvement.
+**Day 3 — Voice Q&A loop.** Hold-to-talk Moonshine question ASR with VAD-gated input + 600 ms tail-silence bookend + final-delta wait. Hierarchical retriever. ContextPacker with explicit 2,400-token budget. Grounding gate at cosine 0.22. QAOrchestrator with snapshot streaming → SentenceBoundaryDetector → TTS prefetch. Per-meeting chat thread (ChatThread + ChatMessage). Map-reduce summarization for long meetings (>7,500 chars). Moonshine swap to medium-streaming for 1.2 pp WER improvement.
 
 **Day 4 — Neural TTS + diarization.** FluidAudio Kokoro 82M ANE wired through `TTSWorker` actor with sentence-boundary streaming and 24 kHz → speaker `AVAudioConverter` bridge. FluidAudio Pyannote 3.1 + WeSpeaker v2 integrated; `DiarizationReconciler` aligns word-timing with speaker segments so transcript chunks and summary attribute ownership. Lazy-warm pattern keeps iPhone Air below the iOS 26 jetsam ceiling.
 
@@ -153,7 +153,7 @@ Live numbers are captured via an in-process `SessionPerfSampler` that writes a p
 
 | Metric | Target | Where measured |
 |---|---|---|
-| Time-to-first-spoken-word (Q&A) | < 1.5 s on 17 Pro Max, < 3 s on iPhone Air | `QAOrchestrator` `os_signpost` + perf-event marker |
+| Mic-release → first synth dispatch (Q&A) | < 1.5 s on 17 Pro Max, < 3 s on iPhone Air | `QAOrchestrator.runAsk` — instant captured at the call site *before* `QuestionASR.stop()` runs its tail-silence pad, ending at the first sentence handed to the TTS chain. Excludes Kokoro's ~250-300 ms time-to-first-audio-chunk because FluidAudio doesn't expose a first-chunk callback yet; absolute "first speaker audio" is therefore ~250-300 ms later than this number. |
 | ASR TTFT (cold first delta) | < 250 ms warm, ≤ 1.7 s cold (now pre-warmed at launch) | Moonshine streamer debug overlay |
 | Summary latency for 30-min meeting | < 8 s | `MeetingProcessingPipeline` event labels |
 | Memory peak over 40-min session | < 800 MB | `mach_task_basic_info.resident_size` per-second sample |
@@ -172,7 +172,7 @@ The chart and final numbers ship as `perf/<sessionId>.png` in the submission tag
 
 Three layers of audit:
 
-1. **Static** — `git grep -n "URLSession\|URLRequest\|http://\|https://" Aftertalk/` returns zero in production paths.
+1. **Static** — `git grep -nE "URLSession|URLRequest" -- 'Aftertalk/**/*.swift'` returns zero in production paths. (The broader `http(s)?://` match is intentionally not part of this audit because it false-positives on plist DTD declarations and SPM source URLs that never run on device.)
 2. **Runtime** — `NWPathMonitor` assertion fires if any interface is up while recording.
 3. **Visual** — airplane badge in app chrome turns green only when all interfaces are down.
 
@@ -214,7 +214,7 @@ Requirements: Xcode 17+, iOS 26+ device, Apple Developer signing.
 
 ## Acknowledgments
 
-Moonshine ASR — Useful Sensors. FluidAudio — Fluid Inference. gte-small — Alibaba DAMO. sqlite-vec — Alex Garcia.
+Moonshine ASR — Useful Sensors. FluidAudio — Fluid Inference. NLContextualEmbedding — Apple. Prior-art research / deferred swaps: gte-small (Alibaba DAMO), sqlite-vec (Alex Garcia), TEN-VAD (Tencent), Pipecat SmartTurn (Daily).
 
 ## License
 

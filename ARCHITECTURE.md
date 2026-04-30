@@ -35,10 +35,11 @@ Technical reference. Read after `CLAUDE.md` and `PRD.md`. The `~/Documents/After
 
 | Layer | Pick | Why | Fallback |
 |---|---|---|---|
-| ASR | Moonshine Swift (`moonshine-ai/moonshine-swift`) | Brief explicitly prefers Moonshine. 50ms TTFT tiny, native streaming arch, ONNX runtime | WhisperKit (Argmax) — production iOS package, ANE, sub-250ms |
-| LLM | Apple Foundation Models (iOS 18+) | Free, ~30 tok/s on A17/A18, snapshot streaming + `@Generable` macros for structured output, RAG-friendly tool calling | MLX Swift + Phi-4-mini 4-bit |
-| Embeddings | gte-small Core ML (384-dim) | Strong semantic recall, ~50MB, easy Core ML conversion | `NLContextualEmbedding` (Apple, free) as A/B comparator |
-| Vector store | sqlite-vec on SwiftData SQLite file | Idiomatic Swift typed models, vector ops on same SQLite file, supports hierarchical scoping | VecturaKit (pure Swift) |
+| ASR (live) | Moonshine **medium streaming** (`moonshine-ai/moonshine-swift`) via `EnergyVADGate` | Best WER in the Moonshine family at acceptable iPhone footprint; the VAD gate sheds 40–60% of input compute on conversational silence so medium fits inside real-time on A18 hardware | WhisperKit (Argmax) — production iOS package, ANE, sub-250ms |
+| ASR (post-recording polish) | FluidAudio **Parakeet TDT 0.6B v2** (Core ML) | Word-level timings, lower WER than streaming Moonshine at the cost of being non-streaming | Skip and ship raw Moonshine streaming output |
+| LLM | Apple Foundation Models (iOS 26+) | Free, ~30 tok/s on A18, snapshot streaming + `@Generable` macros for structured output, RAG-friendly tool calling | MLX Swift + Phi-4-mini 4-bit |
+| Embeddings | Apple **NLContextualEmbedding** (system asset, 512-dim, English) | Zero bytes shipped in the bundle, on-device, hands a Float vector per token straight to our `EmbeddingService` protocol | gte-small Core ML (384-dim, ~50 MB) — researched + deferred until A/B harness shows recall@3 lift justifies the bundle weight |
+| Vector store | **SwiftDataVectorStore** — typed `MeetingSummaryEmbedding` rows + in-process cosine search | Idiomatic SwiftData; the cosine pass is O(n·d) but n stays in the hundreds for the take-home corpus and dimensionality is 512 | sqlite-vec on the same SQLite file — researched + deferred until meeting count climbs into the tens |
 | TTS (stretch) | FluidAudio Kokoro 82M | ANE-optimized, 50x real-time, ~400ms first audio, single dependency that also ships diarization | `AVSpeechSynthesizer` if Kokoro integration explodes |
 | Diarization (stretch) | FluidAudio Pyannote Core ML | Same dependency as TTS, ~80% accuracy on iPhone mic, 60x real-time | Skip + document tradeoff |
 | VAD | Silero v5 (planned) — currently energy-based gate at -32 dB / 180 ms hold | Industry-standard VAD; energy gate is the bridge that ships today, Silero v5 swap is a small wrapper change | TEN-VAD via Sherpa-ONNX (researched, deferred to hardening sprint) |
@@ -67,7 +68,7 @@ Technical reference. Read after `CLAUDE.md` and `PRD.md`. The `~/Documents/After
   startSec: Double
   endSec: Double
   speakerId: UUID?
-  embedding: Data              // 384*4 bytes for gte-small float32
+  embedding: Data              // 512*4 bytes for NLContextualEmbedding float32
 }
 
 @Model class SpeakerLabel {
@@ -101,7 +102,7 @@ Technical reference. Read after `CLAUDE.md` and `PRD.md`. The `~/Documents/After
 }
 ```
 
-`sqlite-vec` extension is loaded against the same SwiftData-backed SQLite file. Vector search runs as raw `MATCH` queries; results join back to SwiftData rows.
+Vector search runs in-process on `SwiftDataVectorStore` — `MeetingSummaryEmbedding` and `TranscriptChunk.embedding` are loaded into Float arrays and scored with cosine similarity. The sqlite-vec route was researched and is the planned upgrade once meeting count climbs into the tens; for the take-home corpus the in-process pass stays well under 5 ms.
 
 ## Hierarchical 3-layer retrieval (cross-meeting memory)
 
@@ -114,7 +115,7 @@ Foundation Models hard cap: 4096 tokens (input + output). On iOS 26.4+ we get `S
 - Generation buffer: ~1200 tokens (assistant answer + safety margin)
 
 ### Pipeline
-1. **Layer 1 — Summary search**: query embedded (gte-small 384-dim) → cosine match against `MeetingSummaryEmbedding` → top-K=5 meetings.
+1. **Layer 1 — Summary search**: query embedded (`NLContextualEmbedding`, 512-dim) → cosine match against `MeetingSummaryEmbedding` → top-K=5 meetings.
 2. **Layer 2 — Chunk search**: query → `TranscriptChunk` rows scoped to those 5 meetings → top-K=8 chunks.
 3. **Layer 3 — ContextPacker assembly**: render each chunk as `[meeting_title • HH:MM • speaker_label] chunk_text`. Tokenize cumulatively. Stop adding chunks when budget hits 2400 tokens. Cite chunk IDs in the response so the UI can highlight source spans.
 
@@ -182,32 +183,39 @@ Aftertalk/
 │   ├── OnboardingFlow.swift          // 3-screen privacy-first onboarding
 │   └── AirplaneModeCheck.swift       // toggles Network monitor, shows green badge
 ├── Recording/
-│   ├── AudioCaptureService.swift     // AVAudioEngine + concurrent ASR/diarization taps
+│   ├── AudioCaptureService.swift     // AVAudioEngine + 48k→16k AVAudioConverter + WAV writer
+│   ├── AudioPreprocessor.swift       // 6 dB linear gain + tanh soft-clip for far-field ASR conditioning
+│   ├── EnergyVADGate.swift           // RMS hysteresis + pre-roll + hold-tail; sheds silence frames
 │   ├── MoonshineStreamer.swift       // wraps moonshine-swift, emits TranscriptDelta
-│   ├── DiarizationService.swift      // FluidAudio Pyannote, emits SpeakerSegment
-│   ├── VADService.swift              // TEN-VAD via Sherpa-ONNX, isSpeaking events
+│   ├── BatchASRService.swift         // post-recording polish router (Parakeet → Moonshine fallback)
+│   ├── FluidAudioParakeetTranscriber.swift  // FluidAudio Parakeet TDT 0.6B v2, word timings
+│   ├── PyannoteDiarizationService.swift     // FluidAudio Pyannote 3.1 + WeSpeaker v2
+│   ├── ModelLocator.swift            // bundle / Application Support model path resolution
 │   └── RecordingViewModel.swift
 ├── Summary/
 │   ├── SummaryGenerator.swift        // Foundation Models @Generable struct call
 │   ├── MeetingSummary.swift          // {decisions, actions, topics, openQs}
-│   └── ChunkIndexer.swift            // splits transcript into chunks, runs gte-small embeddings
+│   ├── DiarizationReconciler.swift   // aligns ASR word timings to speaker segments
+│   ├── MeetingProcessingPipeline.swift  // orchestrates polish → diarize → chunk → embed → summarize
+│   └── ChunkIndexer.swift            // 4-sentence windows + 1-sentence overlap
 ├── Retrieval/
-│   ├── EmbeddingService.swift        // gte-small Core ML wrapper
-│   ├── VectorStore.swift             // sqlite-vec query layer
+│   ├── EmbeddingService.swift        // NLContextualEmbedding wrapper (512-dim, English)
+│   ├── VectorStore.swift             // SwiftDataVectorStore — typed rows + in-process cosine
 │   ├── HierarchicalRetriever.swift   // 3-layer scope logic
 │   └── ContextPacker.swift           // prompt assembly with citations + token budgeting
 ├── QA/
-│   ├── QAOrchestrator.swift          // ties ASR → retrieve → LLM → TTS
-│   ├── BargeInController.swift       // VAD-driven interrupt + cancel
+│   ├── QAOrchestrator.swift          // ties ASR → retrieve → LLM → TTS, threads honest TTFSW
+│   ├── QuestionASR.swift             // hold-to-talk question recorder + tail-silence bookend
+│   ├── BargeInController.swift       // wired but disabled — see "turn-taking" row in README table
 │   ├── SentenceBoundaryDetector.swift
 │   └── ChatThreadView.swift
 ├── TTS/
-│   ├── KokoroTTSService.swift        // FluidAudio Kokoro wrapper, streaming queue
+│   ├── KokoroTTSService.swift        // FluidAudio Kokoro 82M wrapper, streaming queue
 │   ├── TTSWorker.swift               // actor managing playback + prefetch
-│   └── AudioSessionManager.swift     // .playAndRecord + ducking config
+│   └── AudioSessionManager.swift     // .playAndRecord + .voiceChat AEC plumbing
 ├── Persistence/
 │   ├── ModelContainer+Aftertalk.swift
-│   ├── SQLiteVecBootstrap.swift      // loads sqlite-vec extension on app launch
+│   ├── MeetingsRepository.swift      // @ModelActor — meetings, embeddings, chats, delete cleanup
 │   └── Models/                       // SwiftData @Model files
 ├── UI/
 │   ├── MeetingsListView.swift
