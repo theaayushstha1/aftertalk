@@ -542,7 +542,8 @@ struct RootView: View {
             }
         }
 
-        let retriever = HierarchicalRetriever(embeddings: embeddings, store: store)
+        let bm25 = BM25Index(modelContainer: container)
+        let retriever = HierarchicalRetriever(embeddings: embeddings, store: store, bm25: bm25)
         // Prefer FluidAudio Kokoro 82M (Day 4). If the bundled weights aren't
         // present yet (fresh checkout, before Scripts/fetch-kokoro-models.sh
         // has run), fall back to AVSpeechSynthesizer so the build still runs

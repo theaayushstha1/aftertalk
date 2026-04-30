@@ -32,6 +32,7 @@ protocol Retriever: Sendable {
 final class HierarchicalRetriever: Retriever, @unchecked Sendable {
     private let embeddings: any EmbeddingService
     private let store: any VectorStore
+    private let bm25: BM25Index?
     private let summaryTopK: Int
     /// Absolute floor — an off-topic meeting whose cosine to the question is
     /// near random noise should not contribute citations regardless of how
@@ -46,9 +47,13 @@ final class HierarchicalRetriever: Retriever, @unchecked Sendable {
     private static let summaryAbsoluteFloor: Float = 0.12
     private let log = Logger(subsystem: "com.theaayushstha.aftertalk", category: "Retriever")
 
-    init(embeddings: any EmbeddingService, store: any VectorStore, summaryTopK: Int = 8) {
+    init(embeddings: any EmbeddingService,
+         store: any VectorStore,
+         bm25: BM25Index? = nil,
+         summaryTopK: Int = 8) {
         self.embeddings = embeddings
         self.store = store
+        self.bm25 = bm25
         self.summaryTopK = summaryTopK
     }
 
@@ -85,8 +90,26 @@ final class HierarchicalRetriever: Retriever, @unchecked Sendable {
                 scope = filtered.isEmpty ? nil : filtered.map(\.meetingId)
             }
         }
-        let chunks = try await store.searchChunks(query: queryVec, scopedTo: scope, topK: query.topKChunks)
+        // Hybrid retrieval: dense (semantic) + BM25 (lexical) → RRF fusion.
+        // Both lookups use a wider topK (3× the requested final size) so
+        // RRF has room to mix rankings instead of just intersecting two
+        // tiny sets. Dense catches paraphrase / topical match; BM25
+        // catches keyword precision (proper nouns, model numbers, dates,
+        // exact phrases). When `bm25` is nil (legacy callers / tests),
+        // we fall back to dense-only — preserves existing behaviour for
+        // anything not yet upgraded.
+        let widenedK = max(query.topKChunks * 3, 24)
+        async let denseHits = store.searchChunks(query: queryVec, scopedTo: scope, topK: widenedK)
+        async let bm25Hits: [(chunkId: UUID, score: Float)] = {
+            guard let bm25 else { return [] }
+            return (try? await bm25.searchChunks(query: trimmed, scopedTo: scope, topK: widenedK)) ?? []
+        }()
+        let dense = try await denseHits
+        let bm25List = await bm25Hits
+        let chunks = Self.fuseRRF(dense: dense, bm25: bm25List, topK: query.topKChunks)
+
         let searchMs = searchStart.duration(to: .now).aftertalkMillis
+        log.info("retrieve: dense=\(dense.count, privacy: .public) bm25=\(bm25List.count, privacy: .public) → fused=\(chunks.count, privacy: .public)")
 
         return RetrievalResult(
             chunks: chunks,
@@ -94,5 +117,48 @@ final class HierarchicalRetriever: Retriever, @unchecked Sendable {
             queryEmbeddingMillis: embedMs,
             searchMillis: searchMs
         )
+    }
+
+    /// Reciprocal Rank Fusion. Standard formula:
+    ///   rrf_score(d) = Σ_{r in retrievers} 1 / (k + rank_r(d))
+    /// where rank starts at 1 and `k=60` is the canonical constant from
+    /// Cormack et al. — robust to wildly different score scales between
+    /// dense (cosine [0,1]) and BM25 (unbounded), which is exactly why
+    /// we use it instead of a weighted score sum.
+    ///
+    /// The fused result is re-sorted by RRF score and we take the top
+    /// `topK`. Each returned `ChunkHit` carries the original DENSE
+    /// `score` (cosine) so downstream code that reads `topScore` still
+    /// gets a familiar signal — we don't replace cosine with RRF
+    /// because the orchestrator's grounding gate is tuned against
+    /// cosine. RRF is a re-ranker, not a score replacer.
+    static func fuseRRF(
+        dense: [ChunkHit],
+        bm25: [(chunkId: UUID, score: Float)],
+        topK: Int
+    ) -> [ChunkHit] {
+        let k: Float = 60
+        var rrf: [UUID: Float] = [:]
+        var lookup: [UUID: ChunkHit] = [:]
+        for (rank, hit) in dense.enumerated() {
+            rrf[hit.chunkId, default: 0] += 1.0 / (k + Float(rank + 1))
+            lookup[hit.chunkId] = hit
+        }
+        for (rank, entry) in bm25.enumerated() {
+            rrf[entry.chunkId, default: 0] += 1.0 / (k + Float(rank + 1))
+            // BM25-only hits without a dense ChunkHit can't contribute
+            // to the result (we don't have the chunk's text/timing on
+            // hand here). They still influence the RRF ranking when
+            // they coincide with a dense hit, which is the common case.
+        }
+        let sorted = rrf.sorted { $0.value > $1.value }
+        var out: [ChunkHit] = []
+        out.reserveCapacity(min(topK, sorted.count))
+        for (id, _) in sorted {
+            guard let hit = lookup[id] else { continue }
+            out.append(hit)
+            if out.count >= topK { break }
+        }
+        return out
     }
 }

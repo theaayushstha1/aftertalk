@@ -22,6 +22,7 @@
 		22C743FAC9EEB9AA7849890F /* TTSWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F05E02C550A2CE27398F6A16 /* TTSWorker.swift */; };
 		2BF4C10ECA268FF7DF09F8D0 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 38E08ED8FEAB528286FDFBBD /* FluidAudio */; };
 		2C310D817826A0A6EEA932E4 /* speaker-diarization-coreml in Resources */ = {isa = PBXBuildFile; fileRef = C2BDC3D142F5100968F7631E /* speaker-diarization-coreml */; };
+		2CBAF5BE9457A339F4835C84 /* BM25Index.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CBA1A2342F22F861527BB65 /* BM25Index.swift */; };
 		2EADDFB8A2E76A86F75CDACA /* EnergyVADGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAE09AAAE05EB184EC21CE2B /* EnergyVADGateTests.swift */; };
 		2EB8E37D42A9DFA5B3A8209A /* EnergyVADGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B5C8FC6A54E89C7F7244060 /* EnergyVADGate.swift */; };
 		310FCE3053C44A06CA540486 /* PrivacyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99862B2E5CBEF50199E2EB90 /* PrivacyMonitor.swift */; };
@@ -93,6 +94,7 @@
 /* Begin PBXFileReference section */
 		02631AEB240C134B4DDD9B11 /* MeetingDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingDetailView.swift; sourceTree = "<group>"; };
 		05AB5125EE60D010710B1E7A /* QSComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QSComponents.swift; sourceTree = "<group>"; };
+		0CBA1A2342F22F861527BB65 /* BM25Index.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BM25Index.swift; sourceTree = "<group>"; };
 		12CE4DE71780FBF89F329ECF /* ChunkIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChunkIndexer.swift; sourceTree = "<group>"; };
 		1516301CB8176D2D224DAB44 /* PyannoteDiarizationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PyannoteDiarizationServiceTests.swift; sourceTree = "<group>"; };
 		1A74B7708239C81455540EDD /* kokoro-82m-coreml */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "kokoro-82m-coreml"; path = "Aftertalk/Resources/Models/kokoro-82m-coreml"; sourceTree = SOURCE_ROOT; };
@@ -281,6 +283,7 @@
 		1F0A7AFB15D586792796A0AA /* Retrieval */ = {
 			isa = PBXGroup;
 			children = (
+				0CBA1A2342F22F861527BB65 /* BM25Index.swift */,
 				9A73343EC50EF82FE035BFF3 /* ContextPacker.swift */,
 				45B8ABF908DE5C6BF3378C9C /* EmbeddingService.swift */,
 				9A1A28F38945D7CCCC1A8840 /* HierarchicalRetriever.swift */,
@@ -501,6 +504,7 @@
 				D89F2266CDA1F8D6FDC3BA12 /* AudioCaptureService.swift in Sources */,
 				D4C8D39C83E5CC6B6B10A7DD /* AudioPreprocessor.swift in Sources */,
 				4B7876DB7DC4BD31E4809923 /* AudioSessionManager.swift in Sources */,
+				2CBAF5BE9457A339F4835C84 /* BM25Index.swift in Sources */,
 				8070A5F4921BF804030AC967 /* BargeInController.swift in Sources */,
 				90A50255FFB14B84BEC4E86F /* BatchASRService.swift in Sources */,
 				91E1D87C82B8B5F5759A57D5 /* ChatThread.swift in Sources */,
