@@ -265,8 +265,18 @@ final class QAOrchestrator {
     }
 
     nonisolated static func speechTextForTTS(_ text: String) -> String {
+        // Strip quote characters ONLY when they flank whitespace, the start
+        // or end of the string, or punctuation — i.e. the markup pattern that
+        // produced the awkward Kokoro splits. Apostrophes inside contractions
+        // ("don't", "Andre's", "we'll") and possessives must survive: Kokoro
+        // is a graphemic-input model and renders "dont" or "Andres" with the
+        // wrong stress and vowel quality.
         var spoken = text
-            .replacingOccurrences(of: #"[“”"']"#, with: "", options: .regularExpression)
+            .replacingOccurrences(
+                of: #"(?<=^|\s|[\(\[])[“”"']|[“”"'](?=\s|$|[,.!?;:\)\]])"#,
+                with: "",
+                options: .regularExpression
+            )
             .replacingOccurrences(of: "`", with: "")
             .replacingOccurrences(of: "*", with: "")
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
@@ -304,15 +314,23 @@ final class QAOrchestrator {
         ) else {
             return text
         }
-        let matched = String(text[match])
-        guard let punctuation = matched.firstIndex(where: { ".!?".contains($0) }) else {
+        // Search for the punctuation directly inside `text[match]` so every
+        // index we use lives in `text`'s storage. The earlier shape allocated
+        // a fresh `String(text[match])` and then reused that String's index
+        // against `text[match]` — Swift does not guarantee `String.Index`
+        // values are interchangeable across distinct strings, so that was
+        // technically undefined behavior even though it worked in practice
+        // because the regex constrains the prefix to ASCII.
+        guard let punctuation = text[match].firstIndex(where: { ".!?".contains($0) }) else {
             return text
         }
-        let fragment = String(matched[..<punctuation]).trimmingCharacters(in: .whitespacesAndNewlines)
-        let restStart = text[match].index(after: punctuation)
-        let rest = String(text[restStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !fragment.isEmpty, let first = rest.first else { return text }
-        return "\(fragment), and \(String(first).lowercased())\(rest.dropFirst())"
+        let fragment = String(text[match.lowerBound..<punctuation])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let restStart = text.index(after: punctuation)
+        let rest = String(text[restStart..<match.upperBound]) + String(text[match.upperBound...])
+        let restTrimmed = rest.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !fragment.isEmpty, let first = restTrimmed.first else { return text }
+        return "\(fragment), and \(String(first).lowercased())\(restTrimmed.dropFirst())"
     }
 
     /// Append `text` to the ordered speech chain and return immediately. The
@@ -913,7 +931,21 @@ final class QAOrchestrator {
         }
         let titlesById = Dictionary(uniqueKeysWithValues: headers.map { ($0.id, $0.title) })
 
-        let session = LanguageModelSession(instructions: Self.globalSystemInstructions)
+        // When the user only has a single meeting on the device, the global
+        // system prompt's "across multiple recorded meetings" framing is
+        // actively wrong — the LLM phrases answers plurally for n=1 ("looking
+        // across your meetings…") or refuses because there is no comparison
+        // set. Append a one-liner at runtime that overrides the framing for
+        // this specific case while leaving the multi-meeting prompt intact
+        // when there is more than one meeting in scope.
+        let instructions: String
+        if headers.count <= 1 {
+            instructions = Self.globalSystemInstructions
+                + "\n\nThe user only has one meeting on this device today. Answer naturally as if asked about that single meeting — do not phrase the response in plural ('across your meetings') or imply a comparison set that does not exist."
+        } else {
+            instructions = Self.globalSystemInstructions
+        }
+        let session = LanguageModelSession(instructions: instructions)
         do {
             try checkAvailability()
         } catch {

@@ -174,6 +174,25 @@ final class GlobalAskRouterTests: XCTestCase {
         XCTAssertEqual(QAOrchestrator.speechTextForTTS("In"), "")
     }
 
+    func testSpeechTextForTTSPreservesContractionsAndPossessives() {
+        // Apostrophes inside words must survive — Kokoro is a graphemic-input
+        // model and "dont", "Andres", "well" (from "we'll") all degrade
+        // pronunciation if the apostrophe is stripped indiscriminately.
+        XCTAssertEqual(
+            QAOrchestrator.speechTextForTTS("Andre's plan was that we'll do it, but he doesn't agree."),
+            "Andre's plan was that we'll do it, but he doesn't agree."
+        )
+    }
+
+    func testSpeechTextForTTSStillStripsFlankingQuotes() {
+        // Quotes that flank whitespace or punctuation are still stripped —
+        // the original artifact pattern from Kokoro's awkward chunking.
+        XCTAssertEqual(
+            QAOrchestrator.speechTextForTTS(#"In "open AI" the model said it doesn't matter."#),
+            "In open AI the model said it doesn't matter."
+        )
+    }
+
     func testMentionCountAnswerAggregatesAcrossMeetings() {
         let counts = [
             MeetingMentionCount(meetingId: UUID(), title: "Research Sync", count: 4),
