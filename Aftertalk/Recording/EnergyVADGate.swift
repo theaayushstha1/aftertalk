@@ -61,6 +61,18 @@ final class EnergyVADGate: @unchecked Sendable {
         var samplesDropped: Int = 0
         var transitions: Int = 0  // silence→speech edges (utterance starts)
         var inSpeech: Bool = false
+        /// Most-recent chunk's RMS in dBFS. Updated every `gate(samples:)`
+        /// call; useful as a live VU meter on the debug overlay.
+        var lastRmsDb: Float = -120
+        /// Exponential moving average of the noise-floor RMS — only updated
+        /// on chunks that the gate classified as silence. Far-field
+        /// classroom recordings typically sit between -50 and -60 dBFS for
+        /// noise floor; quiet office around -65 to -75 dBFS.
+        var noiseFloorDb: Float = -120
+        /// Exponential moving average of speech-chunk RMS — only updated
+        /// on chunks classified as speech. Combined with `noiseFloorDb`
+        /// this gives a working SNR estimate.
+        var speechRmsDb: Float = -120
         /// `samplesForwarded / samplesIn`. Lower is better (more silence
         /// recovered). Conversational target: 0.40–0.65. If this stays
         /// near 1.0 the gate isn't doing anything — recheck thresholds or
@@ -68,6 +80,14 @@ final class EnergyVADGate: @unchecked Sendable {
         var forwardRatio: Double {
             guard samplesIn > 0 else { return 0 }
             return Double(samplesForwarded) / Double(samplesIn)
+        }
+        /// Speech-to-noise margin in dB (speechRms - noiseFloor). Below
+        /// ~10 dB indicates poor capture conditions — a "Move closer to
+        /// speaker" hint for the user. Returns 0 until both averages have
+        /// observed at least one chunk of their respective type.
+        var snrDb: Float {
+            guard speechRmsDb > -120, noiseFloorDb > -120 else { return 0 }
+            return speechRmsDb - noiseFloorDb
         }
     }
 
@@ -100,6 +120,20 @@ final class EnergyVADGate: @unchecked Sendable {
         self.preRoll = [Float](repeating: 0, count: self.preRollCapacity)
     }
 
+    /// Profile-driven init. Routes the four threshold/timing values from a
+    /// `RecordingProfile` so the gate, the preprocessor, and any future
+    /// settings UI all read from one source of truth. Default arg keeps
+    /// behaviour identical to the long-form init at `.normal` values.
+    convenience init(sampleRate: Int = 16_000, profile: RecordingProfile = .normal) {
+        self.init(
+            sampleRate: sampleRate,
+            speechThresholdDb: profile.speechThresholdDb,
+            silenceThresholdDb: profile.silenceThresholdDb,
+            holdSeconds: profile.holdSeconds,
+            preRollSeconds: profile.preRollSeconds
+        )
+    }
+
     /// Process a chunk of (boosted, 16 kHz) samples. Returns the audio that
     /// should be forwarded to Moonshine — either an empty array (silence,
     /// drop), the input chunk verbatim (mid-speech), or pre-roll prepended
@@ -111,8 +145,30 @@ final class EnergyVADGate: @unchecked Sendable {
         stats.samplesIn += samples.count
 
         let rmsDb = Self.rmsDecibels(samples)
+        stats.lastRmsDb = rmsDb
         let aboveSpeech = rmsDb >= speechThresholdDb
         let belowSilence = rmsDb < silenceThresholdDb
+
+        // Maintain exponential moving averages for SNR estimation. Update
+        // the speech average on speech-classified chunks only and the
+        // noise-floor average on silence-classified chunks only — mixing
+        // would smear the two together. Alpha 0.1 means each chunk
+        // contributes ~10% to the running average; matches a ~10-chunk
+        // half-life at our 21 ms / chunk pump rate (~200 ms half-life).
+        let alpha: Float = 0.1
+        if aboveSpeech {
+            if stats.speechRmsDb <= -120 {
+                stats.speechRmsDb = rmsDb
+            } else {
+                stats.speechRmsDb = (1 - alpha) * stats.speechRmsDb + alpha * rmsDb
+            }
+        } else if belowSilence {
+            if stats.noiseFloorDb <= -120 {
+                stats.noiseFloorDb = rmsDb
+            } else {
+                stats.noiseFloorDb = (1 - alpha) * stats.noiseFloorDb + alpha * rmsDb
+            }
+        }
 
         if aboveSpeech {
             // Mid-speech or silence→speech edge.

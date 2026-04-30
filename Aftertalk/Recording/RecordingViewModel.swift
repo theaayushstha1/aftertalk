@@ -44,6 +44,14 @@ final class RecordingViewModel {
     var vadInSpeech: Bool = false
     var vadForwardRatio: Double = 0
     var vadTransitions: Int = 0
+    /// SNR estimate exposed for the debug overlay. `vadSpeechDb` and
+    /// `vadNoiseFloorDb` are exponential moving averages from the gate;
+    /// `vadSnrDb` is their difference (clamped to 0 until both have data).
+    /// On a quiet office demo expect speech ~ -28 dBFS / floor ~ -60 dBFS
+    /// / SNR ~ 32 dB. Below ~10 dB SNR is the "move closer" zone.
+    var vadSpeechDb: Float = -120
+    var vadNoiseFloorDb: Float = -120
+    var vadSnrDb: Float = 0
 
     private var committedLines: [String] = []
     private var activeLine: String = ""
@@ -97,6 +105,9 @@ final class RecordingViewModel {
                 self.vadInSpeech = vad.inSpeech
                 self.vadForwardRatio = vad.forwardRatio
                 self.vadTransitions = vad.transitions
+                self.vadSpeechDb = vad.speechRmsDb
+                self.vadNoiseFloorDb = vad.noiseFloorDb
+                self.vadSnrDb = vad.snrDb
             }
         }
         // AsyncStream is single-iteration. Start the consumers ONCE so they

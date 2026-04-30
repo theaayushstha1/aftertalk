@@ -33,6 +33,15 @@ struct DebugOverlay: View {
                     row("ASR", recording.asrActive ? "active" : "idle")
                     row("Add/Err", "\(recording.asrAddCalls)/\(recording.asrAddErrors)")
                     row("Start/Stop", "\(recording.asrStarts)/\(recording.asrStops)")
+                    // VAD gate readouts. `Fwd` is the forward ratio
+                    // (lower = more silence shed). `Speech/Noise` are EMAs
+                    // in dBFS; `SNR` is their margin. Below ~10 dB SNR is
+                    // the "move closer to speaker" zone — useful when
+                    // testing far-field captures.
+                    row("Fwd", String(format: "%.0f%%", recording.vadForwardRatio * 100))
+                    row("Speech", String(format: "%.0f dBFS", recording.vadSpeechDb))
+                    row("Noise", String(format: "%.0f dBFS", recording.vadNoiseFloorDb))
+                    row("SNR", String(format: "%.0f dB", recording.vadSnrDb))
                     row("Privacy", String(describing: privacy.state).split(separator: "(").first.map(String.init) ?? "—")
                     if let err = recording.lastError {
                         Text(err)

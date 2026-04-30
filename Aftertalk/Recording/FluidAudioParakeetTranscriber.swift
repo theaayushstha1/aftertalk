@@ -78,7 +78,18 @@ final class FluidAudioParakeetTranscriber: BatchASRService, @unchecked Sendable 
             throw BatchASRError.audioUnreadable(audioFile)
         }
         let durationSec = Double(file.length) / file.processingFormat.sampleRate
-        let samples = try Self.readMono16kFloatSamples(from: file)
+        let rawSamples = try Self.readMono16kFloatSamples(from: file)
+
+        // Apply the same ASR-conditioning boost the live Moonshine feed gets.
+        // Previously Parakeet read the on-disk WAV as raw, un-boosted audio,
+        // so the "polish" pass on quiet/distant speech could be measurably
+        // worse than the live transcript (Moonshine saw +6 dB, Parakeet
+        // saw 0 dB). Routing the same `boostForASR` here aligns both
+        // encoders on the same dynamic range. Gain default = `.normal`
+        // profile's 2.0× — matches the live path bit-for-bit. A future
+        // Classroom Mode toggle would route a profile through and bump
+        // gain to 3.5× here in lockstep with the live pump.
+        let samples = AudioPreprocessor.boostForASR(rawSamples)
 
         // Each batch call gets a fresh decoder state — we are not chaining
         // chunks. v2 has 2 LSTM decoder layers (matches default).
