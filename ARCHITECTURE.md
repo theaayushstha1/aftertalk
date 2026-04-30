@@ -42,7 +42,7 @@ Technical reference. Read after `CLAUDE.md` and `PRD.md`. The `~/Documents/After
 | Vector store | **SwiftDataVectorStore** — typed `MeetingSummaryEmbedding` rows + in-process cosine search | Idiomatic SwiftData; the cosine pass is O(n·d) but n stays in the hundreds for the take-home corpus and dimensionality is 512 | sqlite-vec on the same SQLite file — researched + deferred until meeting count climbs into the tens |
 | TTS (stretch) | FluidAudio Kokoro 82M | ANE-optimized, 50x real-time, ~400ms first audio, single dependency that also ships diarization | `AVSpeechSynthesizer` if Kokoro integration explodes |
 | Diarization (stretch) | FluidAudio Pyannote Core ML | Same dependency as TTS, ~80% accuracy on iPhone mic, 60x real-time | Skip + document tradeoff |
-| VAD | Silero v5 (planned) — currently energy-based gate at -32 dB / 180 ms hold | Industry-standard VAD; energy gate is the bridge that ships today, Silero v5 swap is a small wrapper change | TEN-VAD via Sherpa-ONNX (researched, deferred to hardening sprint) |
+| VAD | `EnergyVADGate` — RMS hysteresis, -38 / -50 dBFS thresholds, 300 ms hold tail, 200 ms pre-roll. Sheds silence frames before they reach Moonshine so medium streaming holds real-time on iPhone. | Energy-based today; the gate's `RecordingProfile`-driven init is wired so a future Classroom Mode commit can swap to far-field thresholds without touching the gate's call sites | TEN-VAD via Sherpa-ONNX (researched, deferred to hardening sprint) |
 | EoU prediction | 800ms silence timeout + hold-to-talk override | Hold-to-talk covers the demo flow; auto-EoU is not on the critical path | Pipecat SmartTurnV3 (researched, deferred to hardening sprint) |
 
 ## SwiftData data model
@@ -127,7 +127,7 @@ Foundation Models hard cap: 4096 tokens (input + output). On iOS 26.4+ we get `S
 
 ## VAD + turn-taking + barge-in
 
-**Shipped today (Day 5):** energy-based gate at -32 dB / 180 ms hold, hold-to-talk as the only auto-interrupt mechanism. Industry-standard upgrade is **Silero v5**; **TEN-VAD + Pipecat SmartTurnV3** were researched and deferred to the hardening sprint after Nirbhay's Day 5 review (the energy gate misfires on Kokoro tail bleed past Apple's AEC and the auto-rearm path then opens a 6 s mic window that ASR happily transcribes — see `Aftertalk/QA/BargeInController.swift` and `QAOrchestrator.swift` for the canonical comments).
+**Shipped today:** `EnergyVADGate` with -38 / -50 dBFS thresholds, 300 ms hold tail, 200 ms pre-roll. Hold-to-talk is the only auto-interrupt mechanism. Industry-standard upgrade is **Silero v5**; **TEN-VAD + Pipecat SmartTurnV3** were researched and deferred to the hardening sprint after Nirbhay's Day 5 review (the energy gate misfires on Kokoro tail bleed past Apple's AEC and the auto-rearm path then opens a 6 s mic window that ASR happily transcribes — see `Aftertalk/QA/BargeInController.swift` and `QAOrchestrator.swift` for the canonical comments).
 
 **Layer 1 — Silero v5 (planned) / energy gate (shipped)**. RMS threshold + hold time on the captured 16 kHz frames. Output: `isSpeaking` boolean.
 

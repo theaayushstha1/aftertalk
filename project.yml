@@ -70,6 +70,12 @@ targets:
         NSMicrophoneUsageDescription: "Aftertalk records meetings on-device. Audio never leaves your phone."
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # Surfaces ~/Documents (where SessionPerfSampler writes per-session
+        # CSVs) in the Files app so the user can AirDrop / iCloud-export
+        # the perf data for chart rendering. Without this key, Files app
+        # only sees apps that explicitly opt in.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.theaayushstha.aftertalk

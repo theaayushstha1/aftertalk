@@ -22,6 +22,7 @@
 		22C743FAC9EEB9AA7849890F /* TTSWorker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F05E02C550A2CE27398F6A16 /* TTSWorker.swift */; };
 		2BF4C10ECA268FF7DF09F8D0 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 38E08ED8FEAB528286FDFBBD /* FluidAudio */; };
 		2C310D817826A0A6EEA932E4 /* speaker-diarization-coreml in Resources */ = {isa = PBXBuildFile; fileRef = C2BDC3D142F5100968F7631E /* speaker-diarization-coreml */; };
+		2EADDFB8A2E76A86F75CDACA /* EnergyVADGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAE09AAAE05EB184EC21CE2B /* EnergyVADGateTests.swift */; };
 		2EB8E37D42A9DFA5B3A8209A /* EnergyVADGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B5C8FC6A54E89C7F7244060 /* EnergyVADGate.swift */; };
 		310FCE3053C44A06CA540486 /* PrivacyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99862B2E5CBEF50199E2EB90 /* PrivacyMonitor.swift */; };
 		34114B893F140710EA8BE803 /* MeetingsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97DA4F3A5B7929B96475F1C /* MeetingsListView.swift */; };
@@ -33,6 +34,7 @@
 		4F6A4CC51B8108497C1EDB8D /* DebugOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E66BD314C64CDF3E3EF026A /* DebugOverlay.swift */; };
 		5186CA58F5105FB6FF3B3995 /* kokoro-82m-coreml in Resources */ = {isa = PBXBuildFile; fileRef = 1A74B7708239C81455540EDD /* kokoro-82m-coreml */; };
 		5B82CF57E29C433EB2E00959 /* EmbeddingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45B8ABF908DE5C6BF3378C9C /* EmbeddingService.swift */; };
+		5B837E2DB0366AB2609CD467 /* RecordingProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA0D749F7D0FBAC365E0638 /* RecordingProfile.swift */; };
 		679EFAAFD1F4515F00908D75 /* ModelContainer+Aftertalk.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FF205284A7B13C43BF3011C /* ModelContainer+Aftertalk.swift */; };
 		6CDB55AF8B5F579F8C1AB298 /* PyannoteDiarizationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7750B34FC2A716663857BC39 /* PyannoteDiarizationService.swift */; };
 		6E6CC375C859C8DED34236F2 /* FluidAudioParakeetTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED3F50198AE42417ABCD46DA /* FluidAudioParakeetTranscriber.swift */; };
@@ -69,8 +71,10 @@
 		DF66AE7FE14A561803682DDC /* AftertalkApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23238DEF6909E2FD5F72A8D4 /* AftertalkApp.swift */; };
 		E2E9A9250586694F16B0EA44 /* QSComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05AB5125EE60D010710B1E7A /* QSComponents.swift */; };
 		E4152F9F2F1EC7E9B604A23C /* KokoroVoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9825B712AA33D92AF42EEFF5 /* KokoroVoice.swift */; };
+		E56227734BB00209FFACC08F /* SentenceBoundaryDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3177E1DD8E7EF4546F7C303A /* SentenceBoundaryDetectorTests.swift */; };
 		E826DDD81011FF66891C2D38 /* DiarizationReconciler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A25350B42E969CA49D84CC16 /* DiarizationReconciler.swift */; };
 		E9D5B71B4124E0ED927EB66E /* Meeting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9451D0F32DEA17F1B90CBDD7 /* Meeting.swift */; };
+		EC240F323B31F89C5DDE5AC1 /* MeetingTitleSanitizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF3D31F0194A15A0E11E838 /* MeetingTitleSanitizerTests.swift */; };
 		EC45699155EBEA6B199AC1C4 /* SentenceBoundaryDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 883F465ABF4FC5424D592087 /* SentenceBoundaryDetector.swift */; };
 		ED479A8179B605CA8725F168 /* MoonshineVoice in Frameworks */ = {isa = PBXBuildFile; productRef = 58A06F94C73C33F95A02D67F /* MoonshineVoice */; };
 		FB6582F6CBFAC7698F098696 /* RecordingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F7F2DD575356414495ABE23 /* RecordingViewModel.swift */; };
@@ -97,12 +101,15 @@
 		207DC58B8313D5E917FC61DD /* MeetingProcessingPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingProcessingPipeline.swift; sourceTree = "<group>"; };
 		21439AE268E8977B668ABE10 /* MeetingsRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsRepository.swift; sourceTree = "<group>"; };
 		23238DEF6909E2FD5F72A8D4 /* AftertalkApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AftertalkApp.swift; sourceTree = "<group>"; };
+		2EA0D749F7D0FBAC365E0638 /* RecordingProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingProfile.swift; sourceTree = "<group>"; };
 		304F5E9E9D51B8C815E2D426 /* RecordButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordButton.swift; sourceTree = "<group>"; };
 		316002B5B62131FD50E220B1 /* QSTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QSTabBar.swift; sourceTree = "<group>"; };
+		3177E1DD8E7EF4546F7C303A /* SentenceBoundaryDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentenceBoundaryDetectorTests.swift; sourceTree = "<group>"; };
 		398184C12D895ABECE14E819 /* BatchASRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchASRService.swift; sourceTree = "<group>"; };
 		3A4464265DAFCF9AAB73E41A /* ChatThreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatThreadView.swift; sourceTree = "<group>"; };
 		3B91B8023F976CD72C5925C7 /* QuestionASR.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionASR.swift; sourceTree = "<group>"; };
 		3CD0CA0A72221A5F6BB698E2 /* LowBatteryBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LowBatteryBanner.swift; sourceTree = "<group>"; };
+		3CF3D31F0194A15A0E11E838 /* MeetingTitleSanitizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingTitleSanitizerTests.swift; sourceTree = "<group>"; };
 		45B8ABF908DE5C6BF3378C9C /* EmbeddingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddingService.swift; sourceTree = "<group>"; };
 		4D33A9372A275187D6009C3F /* VectorStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorStore.swift; sourceTree = "<group>"; };
 		4F88D7B327555BB7CD4DC1F1 /* MeetingSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingSummary.swift; sourceTree = "<group>"; };
@@ -140,6 +147,7 @@
 		B34378858924C7E089B40789 /* parakeet-tdt-0.6b-v2 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "parakeet-tdt-0.6b-v2"; path = "Aftertalk/Resources/Models/parakeet-tdt-0.6b-v2"; sourceTree = SOURCE_ROOT; };
 		B474E30D85796D1903009400 /* ChatThread.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatThread.swift; sourceTree = "<group>"; };
 		B97DA4F3A5B7929B96475F1C /* MeetingsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsListView.swift; sourceTree = "<group>"; };
+		BAE09AAAE05EB184EC21CE2B /* EnergyVADGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnergyVADGateTests.swift; sourceTree = "<group>"; };
 		BD030A4E86E5D2FEAD786508 /* AudioSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionManager.swift; sourceTree = "<group>"; };
 		C2BDC3D142F5100968F7631E /* speaker-diarization-coreml */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "speaker-diarization-coreml"; path = "Aftertalk/Resources/Models/speaker-diarization-coreml"; sourceTree = SOURCE_ROOT; };
 		D1856790F895D61CBD48BBF4 /* ProcessingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingView.swift; sourceTree = "<group>"; };
@@ -189,6 +197,7 @@
 				1B1B0BEC1102036E81A4290D /* ModelLocator.swift */,
 				7938E34AB08544C4721C38EC /* MoonshineStreamer.swift */,
 				7750B34FC2A716663857BC39 /* PyannoteDiarizationService.swift */,
+				2EA0D749F7D0FBAC365E0638 /* RecordingProfile.swift */,
 				7F7F2DD575356414495ABE23 /* RecordingViewModel.swift */,
 			);
 			path = Recording;
@@ -236,7 +245,10 @@
 		1367281F287246BA83FAFA3A /* AftertalkTests */ = {
 			isa = PBXGroup;
 			children = (
+				BAE09AAAE05EB184EC21CE2B /* EnergyVADGateTests.swift */,
+				3CF3D31F0194A15A0E11E838 /* MeetingTitleSanitizerTests.swift */,
 				1516301CB8176D2D224DAB44 /* PyannoteDiarizationServiceTests.swift */,
+				3177E1DD8E7EF4546F7C303A /* SentenceBoundaryDetectorTests.swift */,
 			);
 			path = AftertalkTests;
 			sourceTree = "<group>";
@@ -531,6 +543,7 @@
 				D4B678A402994655B0139A59 /* QSTabBar.swift in Sources */,
 				38C0ACF29F72EA68849C825E /* QuestionASR.swift in Sources */,
 				8C0A3520E2A45F2F48379ACE /* RecordButton.swift in Sources */,
+				5B837E2DB0366AB2609CD467 /* RecordingProfile.swift in Sources */,
 				FB6582F6CBFAC7698F098696 /* RecordingViewModel.swift in Sources */,
 				7D25667877418A377369DEFB /* RootView.swift in Sources */,
 				C1D47E6C7189EB0999E5A13D /* SearchView.swift in Sources */,
@@ -550,7 +563,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2EADDFB8A2E76A86F75CDACA /* EnergyVADGateTests.swift in Sources */,
+				EC240F323B31F89C5DDE5AC1 /* MeetingTitleSanitizerTests.swift in Sources */,
 				4EE80D9BD4098DEDF089B373 /* PyannoteDiarizationServiceTests.swift in Sources */,
+				E56227734BB00209FFACC08F /* SentenceBoundaryDetectorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

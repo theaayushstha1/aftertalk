@@ -147,7 +147,7 @@ struct SettingsView: View {
                 AuditRow(
                     label: "Models loaded",
                     value: "\(loadedModelCount)/4",
-                    sub: "Pyannote · Moonshine · FM · gte",
+                    sub: "Pyannote · Moonshine · FM · NLContextual",
                     valueIsZero: false
                 )
             }
@@ -187,8 +187,7 @@ struct SettingsView: View {
         if hasFile(at: ModelLocator.segmentationModelURL()) { n += 1 } // Pyannote
         if FileManager.default.fileExists(atPath: ModelLocator.moonshineModelDirectory().path) { n += 1 } // Moonshine
         n += 1 // Foundation Models — system framework, present on iOS 26+
-        if FileManager.default.fileExists(atPath: ModelLocator.appSupport().appendingPathComponent("gte-small").path) { n += 1 } // gte-small (NLContextual fallback also counts)
-        else { n += 1 } // NLContextual is system-provided so always counts
+        n += 1 // NLContextualEmbedding — system asset, always available on iOS 26+
         return min(n, 4)
     }
 
