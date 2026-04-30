@@ -496,15 +496,23 @@ struct ChatThreadView: View {
     /// held so the user gets immediate feedback.
     private var inlineHoldDot: some View {
         ZStack {
+            // Solid filled circle behind the glyph so the mic always reads on
+            // the cream capsule background. We previously used a subtle
+            // `.symbolRenderingMode(.hierarchical)` over `palette.mute` which
+            // rendered as effectively invisible on cream — see screenshot
+            // 2026-04-30 at 7.48.57 AM. Now: ink-filled circle by default,
+            // accent-filled when held, with a soft halo under the press.
             if holding {
                 Circle()
                     .fill(palette.accent.opacity(0.18))
-                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
             }
-            Image(systemName: holding ? "mic.fill" : "mic.and.waveform.fill")
-                .font(.system(size: holding ? 18 : 19, weight: .semibold))
-                .foregroundStyle(holding ? palette.accent : palette.mute)
-                .symbolRenderingMode(.hierarchical)
+            Circle()
+                .fill(holding ? palette.accent : palette.ink)
+                .frame(width: 36, height: 36)
+            Image(systemName: "mic.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(palette.bg)
         }
         .frame(width: 46, height: 46)
         .contentShape(Circle())

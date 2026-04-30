@@ -520,15 +520,22 @@ struct GlobalChatView: View {
 
     private func inlineHoldDot(ctx: QAContext) -> some View {
         ZStack {
+            // Match ChatThreadView.inlineHoldDot — solid ink-filled circle
+            // with a paper-coloured mic glyph so the affordance always reads
+            // on cream. See ChatThreadView for the full rationale (the
+            // hierarchical-rendered SF symbol over mute color rendered
+            // invisibly on iPhone Air).
             if holding {
                 Circle()
                     .fill(palette.accent.opacity(0.18))
-                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
             }
-            Image(systemName: holding ? "mic.fill" : "mic.and.waveform.fill")
-                .font(.system(size: holding ? 18 : 19, weight: .semibold))
-                .foregroundStyle(holding ? palette.accent : palette.mute)
-                .symbolRenderingMode(.hierarchical)
+            Circle()
+                .fill(holding ? palette.accent : palette.ink)
+                .frame(width: 36, height: 36)
+            Image(systemName: "mic.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(palette.bg)
         }
         .frame(width: 46, height: 46)
         .contentShape(Circle())
