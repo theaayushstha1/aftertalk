@@ -1,66 +1,88 @@
+<div align="center">
+
 # Aftertalk
 
-Private meeting intelligence for iPhone. Record a conversation, get a live transcript, structured notes, searchable history, and voice Q&A with citations. Audio, text, embeddings, summaries, and questions stay on device.
+### Private meeting memory for iPhone — recorded, summarised, and answered entirely on device
 
-<p align="center">
-  <img src="docs/assets/aftertalk-demo.gif" alt="Aftertalk iPhone demo showing recording, meeting notes, search, and chat" width="320">
-</p>
+<a href="docs/assets/aftertalk-demo.mp4">
+  <img src="docs/assets/aftertalk-demo.gif" alt="Aftertalk iPhone demo: recording, structured summary, voice Q&A" width="320">
+</a>
 
-<p align="center">
-  <kbd>iOS 26+</kbd>
-  <kbd>SwiftUI</kbd>
-  <kbd>Foundation Models</kbd>
-  <kbd>Moonshine ASR</kbd>
-  <kbd>FluidAudio</kbd>
-  <kbd>Local-first</kbd>
-</p>
+<sub><a href="docs/assets/aftertalk-demo.mp4">▶︎ watch the 22-second walkthrough (MP4)</a></sub>
 
-## What It Does
+<br />
 
-| Capture | Understand | Ask |
+[![iOS 26+](https://img.shields.io/badge/iOS-26%2B-1B1B1F?style=flat-square&logo=apple&logoColor=white)](https://developer.apple.com/ios/)
+[![Swift 6](https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white)](https://swift.org)
+[![SwiftUI](https://img.shields.io/badge/SwiftUI-2096FF?style=flat-square&logo=swift&logoColor=white)](https://developer.apple.com/swiftui/)
+[![Foundation Models](https://img.shields.io/badge/Foundation%20Models-on--device-2F7D55?style=flat-square)](https://developer.apple.com/documentation/FoundationModels)
+[![Local-first](https://img.shields.io/badge/Network-zero-1B1B1F?style=flat-square)](#privacy)
+[![License: MIT](https://img.shields.io/badge/License-MIT-FFC107?style=flat-square)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-33%20passing-2F7D55?style=flat-square&logo=swift&logoColor=white)](#tests)
+
+[**Demo**](#demo) · [**Architecture**](#architecture) · [**Q&A flow**](#qa-flow) · [**Stack**](#stack) · [**Privacy**](#privacy) · [**Build**](#build) · [**Status**](#status)
+
+</div>
+
+---
+
+## What it does
+
+| 🎙 Capture | 🧠 Understand | 💬 Ask |
 |---|---|---|
-| Live on-device transcription with Moonshine streaming ASR. | Local summaries, action items, topics, transcript chunks, and speaker-attributed excerpts. | Per-meeting and cross-meeting chat grounded in saved meeting context. |
-| Post-recording polish with Parakeet when model assets are bundled. | SwiftData storage plus local embeddings for semantic recall. | Streaming answers with citations and optional local neural TTS. |
+| Live Moonshine streaming ASR while you record. | Foundation Models extracts decisions, action items, topics, open questions. | Hold-to-talk Q&A on this meeting **or** all of them. |
+| Optional Parakeet polish for word-accurate timing. | NLContextual embeddings + BM25 + RRF for hybrid retrieval. | Streaming answers with citation pills, optional Kokoro TTS. |
+| Pyannote diarization for speaker-attributed chunks. | Sentence-aligned chunks indexed in SwiftData on the phone. | Soft grounding gate, full-transcript context for short meetings. |
 
-## Product Tour
+---
+
+<a id="demo"></a>
+
+## Product tour
+
+<div align="center">
 
 <table>
   <tr>
-    <td align="center"><img src="docs/assets/readme-record.png" width="210" alt="Live recording screen"><br><b>Live recording</b></td>
-    <td align="center"><img src="docs/assets/readme-meetings.png" width="210" alt="Meetings list"><br><b>Meeting memory</b></td>
-    <td align="center"><img src="docs/assets/readme-summary.png" width="210" alt="Meeting summary"><br><b>Structured summary</b></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/assets/readme-transcript.png" width="210" alt="Transcript screen"><br><b>Transcript</b></td>
-    <td align="center"><img src="docs/assets/readme-actions.png" width="210" alt="Actions screen"><br><b>Action items</b></td>
-    <td align="center"><img src="docs/assets/readme-ask.png" width="210" alt="Ask meeting screen"><br><b>Ask this meeting</b></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/assets/readme-search.png" width="210" alt="Search screen"><br><b>Search</b></td>
-    <td align="center"><img src="docs/assets/readme-global-chat.png" width="210" alt="Global chat screen"><br><b>Global chat</b></td>
-    <td align="center"><img src="docs/assets/readme-settings.png" width="210" alt="Settings privacy audit"><br><b>Privacy audit</b></td>
+    <td align="center"><img src="docs/assets/readme-record.png" width="148" alt="Live recording"><br><sub><b>Record</b></sub></td>
+    <td align="center"><img src="docs/assets/readme-meetings.png" width="148" alt="Meetings"><br><sub><b>Meetings</b></sub></td>
+    <td align="center"><img src="docs/assets/readme-summary.png" width="148" alt="Summary"><br><sub><b>Summary</b></sub></td>
+    <td align="center"><img src="docs/assets/readme-transcript.png" width="148" alt="Transcript"><br><sub><b>Transcript</b></sub></td>
+    <td align="center"><img src="docs/assets/readme-actions.png" width="148" alt="Actions"><br><sub><b>Actions</b></sub></td>
+    <td align="center"><img src="docs/assets/readme-ask.png" width="148" alt="Ask"><br><sub><b>Ask</b></sub></td>
+    <td align="center"><img src="docs/assets/readme-search.png" width="148" alt="Search"><br><sub><b>Search</b></sub></td>
+    <td align="center"><img src="docs/assets/readme-global-chat.png" width="148" alt="Global chat"><br><sub><b>Global chat</b></sub></td>
+    <td align="center"><img src="docs/assets/readme-settings.png" width="148" alt="Settings privacy"><br><sub><b>Privacy audit</b></sub></td>
   </tr>
 </table>
 
-## Local Pipeline
+</div>
+
+---
+
+<a id="architecture"></a>
+
+## Architecture
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#F5E7D0', 'primaryTextColor': '#1D1712', 'primaryBorderColor': '#B4532A', 'lineColor': '#8A5A44', 'secondaryColor': '#E7F1EA', 'tertiaryColor': '#E7ECF8', 'fontFamily': 'Inter, ui-sans-serif, system-ui'}}}%%
 flowchart LR
-    A([iPhone mic]):::capture --> B[Moonshine streaming ASR]:::model
+    A([iPhone mic]):::capture --> B[Moonshine live ASR]:::model
     B --> C[Live transcript]:::ui
-    B --> D[Transcript chunks]:::data
-    A --> E[Parakeet polish]:::model
-    E --> D
-    D --> F[Foundation Models summary]:::model
-    D --> G[Local embeddings]:::model
-    F --> H[(SwiftData)]:::store
-    G --> H
-    D --> H
-    H --> I[Search + citations]:::ui
-    H --> J[Meeting chat]:::ui
-    H --> K[Global chat]:::ui
-    J --> L[Kokoro / AVSpeech TTS]:::model
+    A --> D[WAV on device]:::data
+    D --> E[Parakeet polish]:::model
+    D --> F[FluidAudio diarization]:::model
+    E --> G[Canonical transcript]:::data
+    F --> G
+    G --> H[Chunks + summary]:::data
+    H --> I[NLContextualEmbedding]:::model
+    H --> J[Foundation Models summary]:::model
+    I --> K[(SwiftData)]:::store
+    J --> K
+    H --> K
+    K --> L[Search]:::ui
+    K --> M[Meeting chat]:::ui
+    K --> N[Global chat]:::ui
 
     classDef capture fill:#F7D9C4,stroke:#B4532A,color:#1D1712;
     classDef model fill:#E7ECF8,stroke:#4F68A8,color:#172033;
@@ -69,7 +91,9 @@ flowchart LR
     classDef ui fill:#F0E7FF,stroke:#7450A8,color:#241338;
 ```
 
-## Q&A Flow
+<a id="qa-flow"></a>
+
+## Q&A flow
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'actorBkg': '#F5E7D0', 'actorBorder': '#B4532A', 'signalColor': '#4F68A8', 'activationBkgColor': '#E7F1EA', 'noteBkgColor': '#FFF4CC', 'fontFamily': 'Inter, ui-sans-serif, system-ui'}}}%%
@@ -78,147 +102,64 @@ sequenceDiagram
     participant U as User
     participant ASR as Question ASR
     participant Q as QAOrchestrator
-    participant R as Local retriever
+    participant R as Hybrid retriever
     participant DB as SwiftData
     participant LLM as Foundation Models
-    participant TTS as TTS
+    participant TTS as Local TTS
 
     U->>ASR: hold-to-talk question
     ASR-->>Q: local transcript
-    Q->>R: retrieve meeting context
-    R->>DB: summaries, chunks, embeddings
-    DB-->>R: grounded excerpts
-    R-->>Q: packed context + citations
+    alt Short meeting (≤ ~10k chars)
+        Q->>DB: full transcript + structured summary
+        Q->>R: best-effort retrieval (citations only)
+    else Larger / global
+        Q->>R: dense + BM25 + RRF fusion
+        R->>DB: chunks, summaries, embeddings
+    end
+    DB-->>Q: packed context
     Q->>LLM: stream answer locally
-    loop answer snapshots
-        LLM-->>Q: partial text
-        Q-->>U: update chat bubble
-        Q->>TTS: synthesize completed sentence
+    loop sentence stream
+        LLM-->>Q: snapshot
+        Q-->>U: chat bubble + citations
+        Q->>TTS: speak completed sentence
     end
 ```
 
-## Component Map
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#E7ECF8', 'primaryBorderColor': '#4F68A8', 'primaryTextColor': '#172033', 'lineColor': '#8A5A44', 'fontFamily': 'Inter, ui-sans-serif, system-ui'}}}%%
-classDiagram
-    class RecordingViewModel {
-        +start()
-        +stop()
-        +liveTranscript
-    }
-    class MoonshineStreamer {
-        +warm()
-        +append(samples)
-        +deltas()
-    }
-    class MeetingProcessingPipeline {
-        +process(recording)
-    }
-    class MeetingsRepository {
-        +saveMeeting()
-        +deleteMeeting()
-        +fetchChunks()
-    }
-    class EmbeddingService {
-        <<protocol>>
-        +embed(text)
-    }
-    class HierarchicalRetriever {
-        +retrieve(query)
-        +packContext()
-    }
-    class QAOrchestrator {
-        +runAsk()
-        +runAskGlobal()
-    }
-    class TTSService {
-        <<protocol>>
-        +speak(text)
-        +stop()
-    }
-
-    RecordingViewModel --> MoonshineStreamer
-    RecordingViewModel --> MeetingProcessingPipeline
-    MeetingProcessingPipeline --> MeetingsRepository
-    MeetingProcessingPipeline --> EmbeddingService
-    QAOrchestrator --> HierarchicalRetriever
-    QAOrchestrator --> TTSService
-    HierarchicalRetriever --> MeetingsRepository
-```
-
-## Data Shape
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#E7F1EA', 'primaryBorderColor': '#2F7D55', 'primaryTextColor': '#102418', 'lineColor': '#8A5A44', 'fontFamily': 'Inter, ui-sans-serif, system-ui'}}}%%
-erDiagram
-    MEETING ||--o{ TRANSCRIPT_CHUNK : has
-    MEETING ||--o{ SPEAKER_LABEL : has
-    MEETING ||--|| MEETING_SUMMARY : has
-    MEETING ||--o{ CHAT_THREAD : has
-    CHAT_THREAD ||--o{ CHAT_MESSAGE : has
-    MEETING_SUMMARY ||--o{ SUMMARY_EMBEDDING : indexes
-
-    MEETING {
-      uuid id
-      string title
-      date recordedAt
-      double durationSeconds
-      string audioPath
-      string fullTranscript
-    }
-    TRANSCRIPT_CHUNK {
-      uuid id
-      uuid meetingId
-      string text
-      double startSec
-      double endSec
-      string speakerId
-      int embeddingDim
-    }
-    MEETING_SUMMARY {
-      uuid meetingId
-      string decisions
-      string topics
-      string openQuestions
-      string actionItemsJSON
-    }
-    CHAT_MESSAGE {
-      uuid threadId
-      string role
-      string text
-    }
-```
+<a id="stack"></a>
 
 ## Stack
 
-| Area | Implementation |
-|---|---|
-| App | SwiftUI, SwiftData, AVAudioEngine |
-| Live ASR | Moonshine medium streaming |
-| Polish ASR | FluidAudio Parakeet TDT 0.6B v2 |
-| Diarization | FluidAudio diarization assets, best-effort single-mic speaker labels |
-| LLM | Apple Foundation Models on iOS 26 |
-| Embeddings | Apple NLContextualEmbedding |
-| Storage | SwiftData rows plus local vector search |
-| TTS | FluidAudio Kokoro with AVSpeech fallback |
+| Layer | Implementation | Notes |
+|---|---|---|
+| App shell | SwiftUI · SwiftData · AVAudioEngine | iOS 26+, Swift 6 strict concurrency |
+| Live ASR | **Moonshine medium streaming** + EnergyVADGate | VAD-gated input keeps medium under real-time |
+| Polish ASR | FluidAudio **Parakeet TDT 0.6B v2** | Word-accurate timings, ~0.5× real-time |
+| Diarization | FluidAudio Pyannote 3.1 + WeSpeaker v2 | Best-effort labels, `clusteringThreshold=0.5` + ghost-cluster cleanup |
+| LLM | Apple **Foundation Models** | 4096-token context, structured `@Generable` summary |
+| Embeddings | Apple **NLContextualEmbedding** (512-dim) | System asset, no shipped weights |
+| Retrieval | Dense + **BM25** + **Reciprocal Rank Fusion** | Full-transcript path for short meetings |
+| Storage | SwiftData rows + app-local audio files | Cascade delete + repair tool for degraded indexes |
+| TTS | FluidAudio **Kokoro 82M** (ANE) | AVSpeechSynthesizer fallback |
 
-## Privacy Model
+<a id="privacy"></a>
 
-Aftertalk is designed so meeting content does not leave the phone.
+## Privacy
+
+Aftertalk is built so meeting content never leaves the phone.
 
 | Layer | Guarantee |
 |---|---|
-| App runtime | No production `URLSession` or `URLRequest` usage in app Swift sources. |
-| Capture | Works in airplane mode once model assets are present. |
-| Storage | Audio, transcript, summary, chat, and embeddings are stored locally with SwiftData / app files. |
-| UI | Settings exposes a live privacy audit and model asset status. |
-
-Audit command:
+| Runtime network | No production `URLSession` or `URLRequest` usage in app Swift sources. |
+| Capture | Recording and Q&A run locally once model assets are present. |
+| Storage | Audio, transcript, summary, chat, and embeddings are app-local. |
+| Verification | Settings includes a live privacy audit and model-asset status. |
 
 ```bash
 git grep -nE "URLSession|URLRequest" -- 'Aftertalk/**/*.swift'
+# returns zero matches in production sources
 ```
+
+<a id="build"></a>
 
 ## Build
 
@@ -227,39 +168,49 @@ git clone https://github.com/theaayushstha1/aftertalk
 cd aftertalk
 xcodegen generate
 
-# Model bundles are installed before running the app.
+# Local model bundles (gitignored, downloaded by these scripts)
 ./Scripts/fetch-parakeet-models.sh
 ./Scripts/fetch-kokoro-models.sh
 ./Scripts/fetch-pyannote-models.sh
 
-# Add Moonshine .ort files under:
+# Moonshine .ort weights go under
 # Aftertalk/Models/moonshine-medium-streaming-en/
 
 open Aftertalk.xcodeproj
 ```
 
-Requirements: Xcode 17+, iOS 26+ device, Apple Developer signing, model bundles present before the offline demo.
+Requirements: Xcode 17+, iOS 26+ device, Apple Developer signing.
 
-## Current Status
+<a id="tests"></a>
 
-Done:
+## Tests
 
-- Recording, live transcript, transcript detail, summaries, actions, search, per-meeting chat, global chat, Settings privacy audit.
-- Hybrid retrieval (BM25 + dense + Reciprocal Rank Fusion) so cross-meeting Q&A doesn't depend solely on token-averaged embedding similarity.
-- Full-transcript Q&A path for short meetings (≤ ~10k chars) — bypasses retrieval entirely and hands the LLM the whole transcript + structured summary, eliminating "I don't have that" disclaimers on broad questions about the active meeting.
-- Soft grounding gate that only refuses when there's truly no chunks AND no summary on the device, instead of refusing on low cosine.
-- Embedding fallback so a fresh-device install with NLContextual asset missing still saves meetings, summaries, and transcripts; semantic Q&A is gated with an explicit banner instead of failing silently.
-- Dim-mismatch filter at the vector store so degraded embeddings (written under fallback) can't poison search results.
-- Local model fallbacks for missing optional assets where possible.
-- Test coverage for VAD gating, sentence boundaries, title sanitization, and diarization cluster cleanup (regression test for the ghost-cycle bug).
-- Perf CSV export path wired through the app Documents folder via `UIFileSharingEnabled`.
+```bash
+xcodebuild test -scheme Aftertalk \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+```
 
-Still being hardened:
+33 tests across 5 suites — VAD gating, sentence boundary detection, title sanitization, diarization cluster cleanup, and BM25 + RRF fusion. The diarization regression test explicitly encodes the ghost-cluster cycle bug that broke speaker labels under degraded acoustic conditions.
 
-- Far-field classroom audio; a single iPhone mic cannot fully overcome distance, room reverb, or PC-speaker re-recording. The `RecordingProfile.farField` plumbing exists in `Aftertalk/Recording/RecordingProfile.swift` but is not user-selectable yet — adding the toggle plus a proper adaptive AGC is documented as future work.
-- Single-channel diarization on acoustically-degraded inputs (PC-speaker-played podcasts, lecture-hall reverb). Labels are best-effort; citations still point to the exact transcript excerpt regardless of speaker mis-assignment. FluidAudio's `OfflineDiarizerManager` + VBx is the documented next step, deferred because it's a different API surface that needs proper A/B against the current Pyannote streaming path.
-- Pipeline parallelism. Polish (Parakeet) and diarization (Pyannote) run in parallel today via `async let` in `MeetingProcessingPipeline`, but chunking + summary still wait for both. Fully background diarization (chunk + summarize from polish alone, then update speaker labels in place when diarize completes) is a pipeline refactor we deferred for submission stability.
-- Final perf chart from a real 30-minute meeting plus 10-minute Q&A run.
+<a id="status"></a>
+
+## Status
+
+**Shipping**
+
+- Record · live transcript · structured summary · transcript detail · action items · search · per-meeting chat · global chat · Settings privacy audit.
+- Q&A avoids the old low-cosine refusal: full-transcript context for short meetings, hybrid dense+BM25+RRF for larger or cross-meeting queries.
+- Soft grounding gate refuses only when there are truly no chunks AND no summary on the device.
+- Embedding fallback + dim-mismatch filter so degraded indexes can't poison live retrieval.
+- Repair tool re-embeds chunks and creates missing summary embeddings when a working embedding service comes back online.
+- Optional model assets degrade explicitly with banners instead of silently breaking the recording path.
+
+**Known limits**
+
+- Far-field classrooms are microphone-limited; a phone across a room cannot match a lapel mic near the speaker. The `RecordingProfile.farField` plumbing exists but isn't user-toggleable yet.
+- Single-channel diarization labels are best-effort, especially on PC-speaker-played audio or heavy room reverb. FluidAudio's `OfflineDiarizerManager` + VBx is the documented next step.
+- Pipeline parallelism. Polish and diarization run concurrently today via `async let`; full background diarization (chunk + summarize from polish alone) is deferred for submission stability.
+- Final 30-min + 10-min device perf chart still pending a real-device capture run.
 
 ## License
 
@@ -267,4 +218,4 @@ MIT
 
 ## Credits
 
-Moonshine ASR by Useful Sensors. FluidAudio by Fluid Inference. Apple Foundation Models and NLContextualEmbedding power the local intelligence layer.
+Moonshine ASR by Useful Sensors · FluidAudio by Fluid Inference · Apple Foundation Models · Apple NLContextualEmbedding.
