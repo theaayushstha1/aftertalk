@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://cdn.simpleicons.org/apple/1B1B1F" width="48" alt="Apple" />
+<img src="docs/assets/logos/aftertalk-logo-512.png" width="120" alt="Aftertalk logo" />
 
 # Aftertalk
 

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Aftertalk A-wave monogram">
+  <title>Aftertalk — A-wave monogram</title>
+  <desc>Letter A with the traditional crossbar replaced by three asymmetric vertical bars that read as an audio waveform. The two diagonals are filled parallelograms with no inner eye; the waveform sits where the crossbar would.</desc>
+  <rect width="1024" height="1024" fill="#F5E7D0"/>
+  <g fill="#1B1B1F">
+    <path d="M 248 832 L 480 192 L 564 192 L 332 832 Z"/>
+    <path d="M 460 192 L 544 192 L 776 832 L 692 832 Z"/>
+    <rect x="430" y="556" width="40"  height="80"  rx="6"/>
+    <rect x="492" y="520" width="40"  height="152" rx="6"/>
+    <rect x="554" y="572" width="40"  height="48"  rx="6"/>
+  </g>
+</svg>

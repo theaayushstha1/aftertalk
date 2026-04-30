@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Aftertalk decay mark">
+  <title>Aftertalk — Decay</title>
+  <desc>Five vertical bars decreasing in height from left to right, ending in a single dot. Sound decaying into the silence after a conversation, with the dot representing the memory that persists.</desc>
+  <rect width="1024" height="1024" fill="#F5E7D0"/>
+  <g fill="#1B1B1F">
+    <rect x="220" y="232" width="72" height="560" rx="6"/>
+    <rect x="338" y="312" width="72" height="400" rx="6"/>
+    <rect x="456" y="392" width="72" height="240" rx="6"/>
+    <rect x="574" y="472" width="72" height="80"  rx="6"/>
+    <circle cx="752" cy="512" r="32"/>
+  </g>
+</svg>
