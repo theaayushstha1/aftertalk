@@ -360,16 +360,18 @@ struct RootView: View {
                 .padding(.vertical, 14)
             }
             .frame(maxHeight: .infinity)
-            // Auto-scroll on every transcript change. Why two onChange hooks
-            // instead of one: `committedTranscript` updates when Moonshine
-            // marks a line `isFinal=true` (sentence boundaries), while
-            // `tentativeTranscript` updates on the in-flight word stream.
-            // We want to follow both so the viewport tracks the latest
-            // syllable, not just the latest finalized sentence.
-            .onChange(of: recording.committedTranscript) { _, _ in
-                scrollTranscriptToTail(proxy: proxy)
-            }
-            .onChange(of: recording.tentativeTranscript) { _, _ in
+            // Auto-scroll on every transcript change. We observe
+            // `recording.transcript` (the joined committed+tentative view)
+            // instead of the two underlying fields independently — a single
+            // ASR delta updates both `committedTranscript` and
+            // `tentativeTranscript` synchronously inside `apply(delta:)`,
+            // so two separate `.onChange` hooks both fired in the same
+            // frame and SwiftUI logged
+            // "onChange(of: String) action tried to update multiple times
+            // per frame." `transcript` is recomputed at the tail of the
+            // same `apply(delta:)`, so observing it captures the same
+            // intent as one notification per delta.
+            .onChange(of: recording.transcript) { _, _ in
                 scrollTranscriptToTail(proxy: proxy)
             }
             .onChange(of: recording.isRecording) { _, isOn in
