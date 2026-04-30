@@ -85,10 +85,15 @@ struct ChatThreadView: View {
             bodyArea
             statusStrip
             bargeInBanner
-            askDock
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(palette.bg.ignoresSafeArea())
+        // Pin the ask dock as a bottom safe-area inset rather than a regular
+        // VStack child. SwiftUI grows the keyboard inset in lockstep with
+        // safe-area insets, so the dock now slides up cleanly when the
+        // keyboard appears. As a child of the parent VStack with a
+        // `.ignoresSafeArea()` background it just sat there.
+        .safeAreaInset(edge: .bottom, spacing: 0) { askDock }
         .navigationBarBackButtonHidden(true)
         .atTheme()
         .task {
@@ -438,16 +443,21 @@ struct ChatThreadView: View {
             // hold-mic + send button live inside the same capsule. Everything
             // is one input affordance — type or hold, your choice.
             HStack(alignment: .center, spacing: 10) {
+                // Single-line TextField. With `axis: .vertical` Return
+                // inserted a newline rather than firing `onSubmit`, which is
+                // why typing Enter looked like a no-op. Single-line gives us
+                // back the .send keyboard return, and that's the only path
+                // we need: the Q&A pipeline doesn't care about line breaks.
                 TextField(
                     semanticQAAvailable ? "Aftertalk" : "Q&A unavailable",
-                    text: $typedQuestion,
-                    axis: .vertical
+                    text: $typedQuestion
                 )
                 .font(.atBody(15))
                 .foregroundStyle(palette.ink)
                 .focused($typedQuestionFocused)
-                .lineLimit(1...4)
                 .submitLabel(.send)
+                .textInputAutocapitalization(.sentences)
+                .autocorrectionDisabled(false)
                 .disabled(!semanticQAAvailable || asking || holding)
                 .onSubmit {
                     Task { await submitTypedQuestion() }

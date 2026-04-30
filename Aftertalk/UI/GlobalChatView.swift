@@ -123,8 +123,11 @@ struct GlobalChatView: View {
             bodyArea(ctx: ctx)
             statusStrip
             bargeInBanner(ctx: ctx)
-            askDock(ctx: ctx)
         }
+        // Pin the dock as a safe-area inset so SwiftUI's keyboard avoidance
+        // animates it up with the keyboard. As a regular VStack child it
+        // didn't move on iPhone Air. See ChatThreadView for the full note.
+        .safeAreaInset(edge: .bottom, spacing: 0) { askDock(ctx: ctx) }
         .task {
             await ensureThread(repository: ctx.repository)
             await ctx.questionASR.prewarm()
@@ -470,16 +473,18 @@ struct GlobalChatView: View {
             // text field full width, mic + send swap inline based on whether
             // there's a typed question pending.
             HStack(alignment: .center, spacing: 10) {
+                // Single-line — see ChatThreadView for why `axis: .vertical`
+                // had to go (Return inserted a newline instead of submitting).
                 TextField(
                     ctx.semanticQAAvailable ? "Aftertalk" : "Q&A unavailable",
-                    text: $typedQuestion,
-                    axis: .vertical
+                    text: $typedQuestion
                 )
                 .font(.atBody(15))
                 .foregroundStyle(palette.ink)
                 .focused($typedQuestionFocused)
-                .lineLimit(1...4)
                 .submitLabel(.send)
+                .textInputAutocapitalization(.sentences)
+                .autocorrectionDisabled(false)
                 .disabled(!ctx.semanticQAAvailable || asking || holding)
                 .onSubmit {
                     Task { await submitTypedQuestion(ctx: ctx) }
