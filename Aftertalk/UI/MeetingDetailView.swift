@@ -494,6 +494,16 @@ struct MeetingDetailView: View {
                 // mounted.
                 .task(id: pendingScrollChunkId) {
                     guard let target = pendingScrollChunkId else { return }
+                    // Clear any stale highlight from a previous citation tap
+                    // BEFORE the LazyVStack lay-out wait. `.task(id:)` cancels
+                    // the prior task on a fresh tap, and that cancellation
+                    // would leave the previous target highlighted forever.
+                    // We can't guard the reset on `Task.isCancelled` because
+                    // the cancel happens between iterations — clearing here
+                    // is the safest reset point.
+                    if highlightedChunkId != target {
+                        highlightedChunkId = nil
+                    }
                     // One frame so the LazyVStack lays out chunks.
                     try? await Task.sleep(for: .milliseconds(80))
                     if Task.isCancelled { return }
@@ -505,7 +515,11 @@ struct MeetingDetailView: View {
                         pendingScrollChunkId = nil
                     }
                     try? await Task.sleep(for: .seconds(1.8))
-                    if Task.isCancelled { return }
+                    // Don't bail on cancellation: a rapid second tap cancels
+                    // this task before the highlight clears, but the next
+                    // task's "clear stale" branch above resets us. The check
+                    // here is just to avoid clobbering a *new* target's
+                    // highlight if scheduling raced.
                     await MainActor.run {
                         if highlightedChunkId == target {
                             highlightedChunkId = nil

@@ -87,15 +87,16 @@ final class QAOrchestrator {
     private var speechTasks: [Task<Void, Never>] = []
     private var pendingSpeechText: String = ""
 
-    /// Keep chunks under the Kokoro 5s graph budget, but avoid dispatching
-    /// tiny one-sentence clips unless the stream finishes there. Bumped from
-    /// 95/135 → 130/185 after on-device testing: shorter chunks made the
-    /// playback sound visibly "chunked" because every Kokoro synth has a
-    /// small leading + trailing silence pad and back-to-back scheduling
-    /// stacks those pads. ~130 chars covers two short sentences in one
-    /// inference, halving the seam count without exceeding the graph budget.
+    /// Keep chunks under the Kokoro 5s graph budget. We pin Kokoro to the 5s
+    /// variant in `KokoroTTSService` so a long acronym-dense sentence with no
+    /// internal commas would otherwise either truncate or throw — at 24 kHz,
+    /// 5 s is ~120 k samples, which is roughly 130–150 chars at typical
+    /// English phoneme density. 130 target / 150 max gives the audio path
+    /// enough material to mask sentence seams while staying under the graph
+    /// ceiling on dense answers (an earlier 185 ceiling tripped the limit
+    /// in review).
     private static let smoothSpeechTargetChars = 130
-    private static let smoothSpeechMaxChars = 185
+    private static let smoothSpeechMaxChars = 150
 
     /// Cosine similarity floor below which we treat the question as off-topic
     /// and refuse to call the LLM (CS Navigator grounding-gate pattern). 0.4

@@ -202,8 +202,9 @@ actor KokoroTTSService: TTSService {
             // lazy-loads the 15s graph (~310 MB resident) regardless of which
             // variants we passed to `TtsModels.download`. That second graph
             // is what was tipping us into jetsam during the first answer.
-            // SentenceBoundaryDetector caps utterances at 130 chars so
-            // anything we send fits comfortably in the 5s graph.
+            // QAOrchestrator caps utterances at 150 chars
+            // (`smoothSpeechMaxChars`) so anything we send fits comfortably
+            // in the 5s graph at typical English phoneme density.
             let result = try await box.manager.synthesizeDetailed(
                 text: trimmed,
                 variantPreference: .fiveSecond
@@ -262,9 +263,13 @@ actor KokoroTTSService: TTSService {
         let end = min(samples.count - 1, lastSpeech + trailingKeep)
         var out = Array(samples[start...end])
         preventOutputClipping(in: &out, ceiling: 0.98)
-        // 4 ms fade — enough to mask the abrupt amplitude cut at the trim
-        // boundary, short enough to be inaudible inside the seam.
-        applyEdgeFade(to: &out, frames: Int(0.004 * 24_000.0))
+        // 8 ms fade. The previous 4 ms experiment was too short to mask
+        // amplitude clicks when `firstSpeech`/`lastSpeech` happened to land
+        // on a high-amplitude voiced frame (vowel onset) — industry rule of
+        // thumb is 5–10 ms for de-clicking. The chunking the user heard was
+        // killed by the silence-keep trim above (35/75 → 22/45 ms), not by
+        // shortening the fade, so we restore the safe value here.
+        applyEdgeFade(to: &out, frames: Int(0.008 * 24_000.0))
         return out
     }
 
