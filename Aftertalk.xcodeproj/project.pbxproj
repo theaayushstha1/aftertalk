@@ -30,6 +30,7 @@
 		38C0ACF29F72EA68849C825E /* QuestionASR.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B91B8023F976CD72C5925C7 /* QuestionASR.swift */; };
 		3A8741759BAC991532DEAFEA /* BM25IndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13FF399B854E60B933187DE2 /* BM25IndexTests.swift */; };
 		3B43BAE51490BD9B154C227A /* QAContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6812DF977A4E1532C1AECFFE /* QAContext.swift */; };
+		40360A862D811A1D682D41A6 /* QuestionNormalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3294C4E711F21FA2454C4FCF /* QuestionNormalizerTests.swift */; };
 		43E41EC61BEEBDE7E303D4D1 /* TTSService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75EB00EA79CC6EBF481D45C9 /* TTSService.swift */; };
 		4B7876DB7DC4BD31E4809923 /* AudioSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD030A4E86E5D2FEAD786508 /* AudioSessionManager.swift */; };
 		4EE80D9BD4098DEDF089B373 /* PyannoteDiarizationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1516301CB8176D2D224DAB44 /* PyannoteDiarizationServiceTests.swift */; };
@@ -49,6 +50,7 @@
 		89927018EEB58BB1551C3CCD /* ChatThreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A4464265DAFCF9AAB73E41A /* ChatThreadView.swift */; };
 		8A70F978DD4445F2FDBB1463 /* MeetingSummaryRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEADFEB1B811F46CB0A86D15 /* MeetingSummaryRecord.swift */; };
 		8C0A3520E2A45F2F48379ACE /* RecordButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 304F5E9E9D51B8C815E2D426 /* RecordButton.swift */; };
+		8C0C70AA36D0A99BCA2E8BF0 /* QuestionNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2337A112B107E99B9A1E4F1 /* QuestionNormalizer.swift */; };
 		8C58452B64254536FDBF7357 /* ContextPacker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A73343EC50EF82FE035BFF3 /* ContextPacker.swift */; };
 		90A50255FFB14B84BEC4E86F /* BatchASRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 398184C12D895ABECE14E819 /* BatchASRService.swift */; };
 		91E1D87C82B8B5F5759A57D5 /* ChatThread.swift in Sources */ = {isa = PBXBuildFile; fileRef = B474E30D85796D1903009400 /* ChatThread.swift */; };
@@ -111,6 +113,7 @@
 		304F5E9E9D51B8C815E2D426 /* RecordButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordButton.swift; sourceTree = "<group>"; };
 		316002B5B62131FD50E220B1 /* QSTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QSTabBar.swift; sourceTree = "<group>"; };
 		3177E1DD8E7EF4546F7C303A /* SentenceBoundaryDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentenceBoundaryDetectorTests.swift; sourceTree = "<group>"; };
+		3294C4E711F21FA2454C4FCF /* QuestionNormalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionNormalizerTests.swift; sourceTree = "<group>"; };
 		398184C12D895ABECE14E819 /* BatchASRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchASRService.swift; sourceTree = "<group>"; };
 		3A4464265DAFCF9AAB73E41A /* ChatThreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatThreadView.swift; sourceTree = "<group>"; };
 		3B91B8023F976CD72C5925C7 /* QuestionASR.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionASR.swift; sourceTree = "<group>"; };
@@ -155,6 +158,7 @@
 		B97DA4F3A5B7929B96475F1C /* MeetingsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsListView.swift; sourceTree = "<group>"; };
 		BAE09AAAE05EB184EC21CE2B /* EnergyVADGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnergyVADGateTests.swift; sourceTree = "<group>"; };
 		BD030A4E86E5D2FEAD786508 /* AudioSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionManager.swift; sourceTree = "<group>"; };
+		C2337A112B107E99B9A1E4F1 /* QuestionNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionNormalizer.swift; sourceTree = "<group>"; };
 		C2BDC3D142F5100968F7631E /* speaker-diarization-coreml */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "speaker-diarization-coreml"; path = "Aftertalk/Resources/Models/speaker-diarization-coreml"; sourceTree = SOURCE_ROOT; };
 		D1856790F895D61CBD48BBF4 /* ProcessingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingView.swift; sourceTree = "<group>"; };
 		D55C297DFDC40B8B8C450F05 /* AudioPreprocessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPreprocessor.swift; sourceTree = "<group>"; };
@@ -255,6 +259,7 @@
 				BAE09AAAE05EB184EC21CE2B /* EnergyVADGateTests.swift */,
 				3CF3D31F0194A15A0E11E838 /* MeetingTitleSanitizerTests.swift */,
 				1516301CB8176D2D224DAB44 /* PyannoteDiarizationServiceTests.swift */,
+				3294C4E711F21FA2454C4FCF /* QuestionNormalizerTests.swift */,
 				14DE1A15A5DF915DEBE3C89B /* RRFFusionTests.swift */,
 				3177E1DD8E7EF4546F7C303A /* SentenceBoundaryDetectorTests.swift */,
 			);
@@ -306,6 +311,7 @@
 				6812DF977A4E1532C1AECFFE /* QAContext.swift */,
 				8B11757A1FB86E399551FA5E /* QAOrchestrator.swift */,
 				3B91B8023F976CD72C5925C7 /* QuestionASR.swift */,
+				C2337A112B107E99B9A1E4F1 /* QuestionNormalizer.swift */,
 				883F465ABF4FC5424D592087 /* SentenceBoundaryDetector.swift */,
 			);
 			path = QA;
@@ -552,6 +558,7 @@
 				E2E9A9250586694F16B0EA44 /* QSComponents.swift in Sources */,
 				D4B678A402994655B0139A59 /* QSTabBar.swift in Sources */,
 				38C0ACF29F72EA68849C825E /* QuestionASR.swift in Sources */,
+				8C0C70AA36D0A99BCA2E8BF0 /* QuestionNormalizer.swift in Sources */,
 				8C0A3520E2A45F2F48379ACE /* RecordButton.swift in Sources */,
 				5B837E2DB0366AB2609CD467 /* RecordingProfile.swift in Sources */,
 				FB6582F6CBFAC7698F098696 /* RecordingViewModel.swift in Sources */,
@@ -577,6 +584,7 @@
 				2EADDFB8A2E76A86F75CDACA /* EnergyVADGateTests.swift in Sources */,
 				EC240F323B31F89C5DDE5AC1 /* MeetingTitleSanitizerTests.swift in Sources */,
 				4EE80D9BD4098DEDF089B373 /* PyannoteDiarizationServiceTests.swift in Sources */,
+				40360A862D811A1D682D41A6 /* QuestionNormalizerTests.swift in Sources */,
 				DE4BB0CA5FF5590CCB003EF2 /* RRFFusionTests.swift in Sources */,
 				E56227734BB00209FFACC08F /* SentenceBoundaryDetectorTests.swift in Sources */,
 			);

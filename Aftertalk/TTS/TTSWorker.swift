@@ -88,6 +88,10 @@ actor TTSWorker {
     /// matches the new output format.
     private func handleConfigurationChange() {
         log.info("TTSWorker: AVAudioEngine config changed — will rebuild graph on next enqueue")
+        resetStoppedPlaybackState()
+    }
+
+    private func resetStoppedPlaybackState() {
         player.stop()
         isRunning = false
         outputFormat = nil
@@ -107,6 +111,19 @@ actor TTSWorker {
     /// keeps a count of in-flight buffers for `waitUntilDone()`.
     func enqueue(_ samples: [Float]) async {
         guard !samples.isEmpty else { return }
+
+        // Trust iOS over our cached `isRunning` flag. iOS sometimes stops the
+        // AVAudioEngine without firing AVAudioEngineConfigurationChange — the
+        // May 1 device log captured it on a `routeChange output_device_unavailable`
+        // (AirPods disconnect mid-Q&A): TTSWorker's flag still said running,
+        // every subsequent `tts.speak` produced
+        // "Player@…: Engine is not running … Cannot play yet!" until the next
+        // utterance triggered a real reset. Inspect `engine.isRunning` directly
+        // and force a rebuild whenever the truth disagrees with our flag.
+        if isRunning && !engine.isRunning {
+            log.warning("TTSWorker: engine stopped silently — rebuilding before enqueue")
+            resetStoppedPlaybackState()
+        }
 
         do {
             try ensureRunning()
@@ -259,7 +276,11 @@ actor TTSWorker {
     // MARK: - Private
 
     private func ensureRunning() throws {
-        if isRunning { return }
+        if isRunning {
+            if engine.isRunning { return }
+            log.info("TTSWorker: AVAudioEngine stopped while worker was marked running — rebuilding graph")
+            resetStoppedPlaybackState()
+        }
         // Resolve the speaker rate now that the audio session is active. Falls
         // back to 48 kHz if the hardware refuses to report.
         let session = AVAudioSession.sharedInstance()

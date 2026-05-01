@@ -50,9 +50,21 @@ protocol ASRService: AnyObject, Sendable {
 ///
 /// All access to the Moonshine objects is serialized through a dedicated
 /// dispatch queue because the listener callback fires on a non-main thread.
+/// Which Moonshine variant the streamer should load. `live` is what the
+/// meeting recorder uses on long continuous speech (small streaming, picked
+/// because medium drifted on a 17-minute reading test). `question` is the
+/// Q&A path: hold-to-talk recordings are short enough that medium stays real
+/// time, and the extra compute is scoped to short questions instead of the
+/// long-running meeting preview path.
+enum MoonshineVariant: Sendable {
+    case live
+    case question
+}
+
 final class MoonshineStreamer: ASRService, @unchecked Sendable {
     private let log = Logger(subsystem: "com.theaayushstha.aftertalk", category: "Moonshine")
     private let modelDirectory: URL
+    private let modelArch: ModelArch
     private let queue = DispatchQueue(label: "com.theaayushstha.aftertalk.moonshine")
 
     nonisolated(unsafe) private var transcriber: Transcriber?
@@ -63,8 +75,9 @@ final class MoonshineStreamer: ASRService, @unchecked Sendable {
     private let deltaStream: AsyncStream<TranscriptDelta>
     private let diagStream: AsyncStream<ASRDiagnostics>
 
-    init(modelDirectory: URL) {
+    init(modelDirectory: URL, variant: MoonshineVariant = .live) {
         self.modelDirectory = modelDirectory
+        self.modelArch = variant == .question ? .mediumStreaming : .smallStreaming
         var sink: AsyncStream<TranscriptDelta>.Continuation!
         self.deltaStream = AsyncStream { sink = $0 }
         self.continuation = sink
@@ -87,12 +100,15 @@ final class MoonshineStreamer: ASRService, @unchecked Sendable {
                 guard let self else { cont.resume(); return }
                 do {
                     if self.transcriber == nil {
-                        // Arch must match `ModelLocator.moonshineModelDirectory()`.
-                        // Small is the picked live-preview variant: it stays
-                        // real-time on sustained speech, while Parakeet later
-                        // regenerates the canonical transcript from the WAV.
+                        // The streamer is initialized with a variant. `live`
+                        // → small streaming (real-time on sustained speech).
+                        // `question` → medium streaming (better noisy-room
+                        // accuracy on short hold-to-talk utterances). Both
+                        // variants ship as bundled folder references; the
+                        // model directory is selected per-variant via
+                        // `ModelLocator.moonshineModelDirectory(for:)`.
                         let t = try Transcriber(modelPath: self.modelDirectory.path,
-                                                modelArch: .smallStreaming)
+                                                modelArch: self.modelArch)
                         let s = try t.createStream(updateInterval: 0.10)
                         s.addListener { [weak self] event in
                             self?.dispatch(event)

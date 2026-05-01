@@ -52,8 +52,15 @@ final class QuestionASR {
     private var finalContinuation: CheckedContinuation<Void, Never>?
 
     init() {
-        let dir = ModelLocator.moonshineModelDirectory()
-        let s = MoonshineStreamer(modelDirectory: dir)
+        // Q&A path uses the medium streaming variant. Hold-to-talk utterances
+        // are short, so the small/medium tradeoff that mattered for the long
+        // meeting recorder (small wins on sustained speech, medium drifts)
+        // doesn't apply here. Medium spends more compute on the short question
+        // where it helps most, without bringing back the long-meeting backlog.
+        // Proper-noun misses ("Aftertalk" → "afterthoughts") still need the
+        // narrow normalizer downstream.
+        let dir = ModelLocator.moonshineModelDirectory(for: .question)
+        let s = MoonshineStreamer(modelDirectory: dir, variant: .question)
         self.streamer = s
         self.pump = Pump(streamer: s)
         let deltas = s.deltas()
@@ -162,7 +169,20 @@ final class QuestionASR {
         // before we snapshot the transcript.
         let drainMs = didTimeOut ? 400 : 100
         try? await Task.sleep(for: .milliseconds(drainMs))
-        return liveTranscript
+        // Pass the recognized text through the narrow domain normalizer
+        // before the orchestrator sees it. The normalizer only rewrites
+        // project-specific proper nouns ("afterthoughts" → "Aftertalk",
+        // "open ai" → "OpenAI") — common words like "music" or "meetings"
+        // are left alone because mishearing them is rare enough that a
+        // silent rewrite would be more dangerous than the original miss.
+        let original = liveTranscript
+        let normalized = QuestionNormalizer.normalize(original)
+        if normalized != original {
+            let originalLen = original.count
+            let normalizedLen = normalized.count
+            log.info("question normalized: lenIn=\(originalLen, privacy: .public) lenOut=\(normalizedLen, privacy: .public)")
+        }
+        return normalized
     }
 
     /// Suspends the caller until the next final `LineCompleted` arrives or

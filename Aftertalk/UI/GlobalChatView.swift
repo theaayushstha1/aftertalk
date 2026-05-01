@@ -335,34 +335,60 @@ struct GlobalChatView: View {
                         streamingRow(ctx: ctx)
                             .id("streaming")
                     }
+                    Color.clear
+                        .frame(height: 1)
+                        .id(globalChatBottomAnchorID)
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 18)
                 .padding(.bottom, 24)
             }
             .onChange(of: messages.count) { _, _ in
-                if let last = messages.last {
-                    withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                }
+                scrollConversationToBottom(proxy)
             }
             .onChange(of: holding) { _, on in
-                if on { withAnimation { proxy.scrollTo("listening", anchor: .bottom) } }
+                if on { scrollConversationToBottom(proxy) }
+            }
+            .onChange(of: ctx.questionASR.liveTranscript) { _, _ in
+                guard holding else { return }
+                scrollConversationToBottom(proxy, animated: false)
+            }
+            .onChange(of: finalQuestionText) { _, _ in
+                scrollConversationToBottom(proxy)
             }
             // Stream-time auto-scroll. See ChatThreadView for the rationale —
             // without these the user only sees the answer once playback ends.
             .onChange(of: ctx.orchestrator.liveAnswer) { _, _ in
                 guard !ctx.orchestrator.liveAnswer.isEmpty else { return }
-                withAnimation(.easeOut(duration: 0.18)) {
-                    proxy.scrollTo("streaming", anchor: .bottom)
-                }
+                scrollConversationToBottom(proxy, animated: false)
             }
             .onChange(of: isThinking(ctx: ctx)) { _, thinking in
                 if thinking {
-                    withAnimation { proxy.scrollTo("thinking", anchor: .bottom) }
+                    scrollConversationToBottom(proxy)
+                }
+            }
+            .onChange(of: typedQuestionFocused) { _, focused in
+                if focused { scrollConversationToBottom(proxy) }
+            }
+            .onAppear {
+                DispatchQueue.main.async {
+                    scrollConversationToBottom(proxy, animated: false)
                 }
             }
         }
         .frame(maxHeight: .infinity)
+    }
+
+    private var globalChatBottomAnchorID: String { "global-chat-bottom-anchor" }
+
+    private func scrollConversationToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        if animated {
+            withAnimation(.easeOut(duration: 0.18)) {
+                proxy.scrollTo(globalChatBottomAnchorID, anchor: .bottom)
+            }
+        } else {
+            proxy.scrollTo(globalChatBottomAnchorID, anchor: .bottom)
+        }
     }
 
     private func isThinking(ctx: QAContext) -> Bool {

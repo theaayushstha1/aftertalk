@@ -29,11 +29,30 @@ enum ModelLocator {
     }
 
     static func moonshineModelDirectory() -> URL {
-        // Small streaming is the picked live-preview variant because it stays
-        // real-time on sustained continuous speech. The canonical transcript
-        // still comes from Parakeet polish after recording, so live ASR can
-        // bias toward latency without sacrificing stored meeting quality.
-        let folderName = "moonshine-small-streaming-en"
+        moonshineModelDirectory(for: .live)
+    }
+
+    /// Returns the bundled Moonshine model folder for the requested variant.
+    ///
+    /// `live` is the meeting recorder path. Small streaming was picked because
+    /// the medium variant drifted into a multi-minute backlog on the 17-minute
+    /// Karpathy reading test — Parakeet polish handles canonical quality on
+    /// the saved WAV, so live ASR biases toward latency.
+    ///
+    /// `question` is the Q&A hold-to-talk path. Hold-to-talk utterances are
+    /// short (typically under fifteen seconds), so the latency budget is
+    /// completely different from a continuous meeting recording. Medium
+    /// streaming spends extra compute where the user actually needs question
+    /// accuracy, while proper nouns like "Aftertalk" still get handled by the
+    /// narrow normalizer downstream.
+    static func moonshineModelDirectory(for variant: MoonshineVariant) -> URL {
+        let folderName: String
+        switch variant {
+        case .live:
+            folderName = "moonshine-small-streaming-en"
+        case .question:
+            folderName = "moonshine-medium-streaming-en"
+        }
         let bundled = Bundle.main.bundleURL
             .appendingPathComponent("Models", isDirectory: true)
             .appendingPathComponent(folderName, isDirectory: true)
