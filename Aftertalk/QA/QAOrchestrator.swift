@@ -1288,15 +1288,30 @@ final class QAOrchestrator {
                 let existing = topicBuckets[key]
                 topicBuckets[key] = (existing?.display ?? topic, (existing?.count ?? 0) + 1)
             }
-            decisionSamples.append(contentsOf: summary.decisions.prefix(1))
+            // Filter out the LLM's "no decisions" disclaimer phrases. The
+            // @Generable schema lets the model populate `decisions` with any
+            // string, so on a meeting with no real decisions the model often
+            // writes "No specific decisions were explicitly mentioned in the
+            // transcript" or similar — which then gets surfaced verbatim as a
+            // "recurring concrete item" in the overview answer. Skip those.
+            for decision in summary.decisions.prefix(1) {
+                if !isLikelyPlaceholderDecision(decision) {
+                    decisionSamples.append(decision)
+                }
+            }
         }
 
-        let topics = topicBuckets.values
+        // Collapse near-duplicate topics that share a multi-word prefix.
+        // "After Talk project details", "After Talk project engineering
+        // narrative", "After Talk project overview" all share "after talk
+        // project" — keep the shortest, most general phrasing.
+        let dedupedBuckets = collapseTopicPrefixes(Array(topicBuckets.values))
+        let topics = dedupedBuckets
             .sorted {
                 if $0.count == $1.count { return $0.display < $1.display }
                 return $0.count > $1.count
             }
-            .prefix(8)
+            .prefix(6)
             .map(\.display)
         let themeText: String
         if topics.isEmpty {
@@ -1329,6 +1344,72 @@ final class QAOrchestrator {
             if !phrase.isEmpty { return phrase.lowercased() }
         }
         return nil
+    }
+
+    /// Detects LLM-emitted "no decisions found" disclaimers that the
+    /// @Generable schema lets through as decision strings. Used by the
+    /// global overview router so the answer doesn't read decisions as
+    /// "One recurring concrete item was: No specific decisions were
+    /// explicitly mentioned in the transcript."
+    nonisolated static func isLikelyPlaceholderDecision(_ decision: String) -> Bool {
+        let lowered = decision.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !lowered.isEmpty else { return true }
+        let placeholderPrefixes = [
+            "no specific",
+            "no decisions",
+            "no decision",
+            "no explicit",
+            "none specific",
+            "none explicitly",
+            "no clear",
+        ]
+        if placeholderPrefixes.contains(where: { lowered.hasPrefix($0) }) { return true }
+        let placeholderPhrases = [
+            "explicitly mentioned",
+            "no decisions were made",
+            "no concrete decisions",
+        ]
+        if placeholderPhrases.contains(where: { lowered.contains($0) }) {
+            // Only flag as placeholder when the surrounding sentence is short
+            // and starts with a negation marker. A real decision could
+            // legitimately reference "explicitly mentioned" in passing.
+            if lowered.hasPrefix("no") || lowered.hasPrefix("none") || lowered.count < 80 {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Folds near-duplicate topics that share a multi-word prefix into a
+    /// single bucket so the global overview answer does not read three
+    /// near-identical strings ("After Talk project details", "After Talk
+    /// project engineering narrative", "After Talk project overview"). Keeps
+    /// the shortest display (most general phrasing) and sums the counts.
+    nonisolated static func collapseTopicPrefixes(
+        _ buckets: [(display: String, count: Int)]
+    ) -> [(display: String, count: Int)] {
+        // Group by the first three significant tokens of each topic. Two
+        // topics that agree on the first three words are treated as the same
+        // theme; we keep the bucket with the shortest display string.
+        var groups: [String: (display: String, count: Int)] = [:]
+        for bucket in buckets {
+            let tokens = bucket.display
+                .lowercased()
+                .split { !$0.isLetter && !$0.isNumber }
+                .map(String.init)
+            let prefixKey = tokens.prefix(3).joined(separator: " ")
+            guard !prefixKey.isEmpty else { continue }
+            if let existing = groups[prefixKey] {
+                let preferShorter = bucket.display.count < existing.display.count
+                groups[prefixKey] = (
+                    display: preferShorter ? bucket.display : existing.display,
+                    count: existing.count + bucket.count
+                )
+            } else {
+                groups[prefixKey] = bucket
+            }
+        }
+        return Array(groups.values)
     }
 
     nonisolated private static func normalizedTopicKey(_ text: String) -> String {

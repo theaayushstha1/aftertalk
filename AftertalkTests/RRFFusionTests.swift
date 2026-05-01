@@ -193,6 +193,47 @@ final class GlobalAskRouterTests: XCTestCase {
         )
     }
 
+    func testIsLikelyPlaceholderDecisionFlagsLLMRefusalText() {
+        // Regression: the device log on May 1 captured the global overview
+        // router reading aloud "One recurring concrete item was No specific
+        // decisions were explicitly mentioned in the transcript." That string
+        // was an LLM-emitted disclaimer for a decision-less meeting, leaking
+        // into the overview answer as if it were a real decision.
+        XCTAssertTrue(QAOrchestrator.isLikelyPlaceholderDecision(
+            "No specific decisions were explicitly mentioned in the transcript."
+        ))
+        XCTAssertTrue(QAOrchestrator.isLikelyPlaceholderDecision("No decisions were made."))
+        XCTAssertTrue(QAOrchestrator.isLikelyPlaceholderDecision("none explicitly stated"))
+        XCTAssertTrue(QAOrchestrator.isLikelyPlaceholderDecision(""))
+        // Real decisions must still pass through.
+        XCTAssertFalse(QAOrchestrator.isLikelyPlaceholderDecision(
+            "We agreed to ship v0.9 by Friday and revisit pricing next sprint."
+        ))
+        XCTAssertFalse(QAOrchestrator.isLikelyPlaceholderDecision(
+            "Budget cut approved at $50k for Q3."
+        ))
+    }
+
+    func testCollapseTopicPrefixesFoldsNearDuplicates() {
+        // Regression: device log showed "After Talk project details / engineering
+        // narrative / overview" all leaking through into the overview answer.
+        // The prefix collapser should fold them into a single bucket.
+        let buckets: [(display: String, count: Int)] = [
+            ("After Talk project details", 1),
+            ("After Talk project engineering narrative", 1),
+            ("After Talk project overview", 1),
+            ("API Deployment Models", 1),
+            ("Audio roadmapping compromises", 1),
+        ]
+        let collapsed = QAOrchestrator.collapseTopicPrefixes(buckets)
+        // The three "After Talk project" variants collapse to one bucket.
+        XCTAssertEqual(collapsed.count, 3)
+        // The collapsed bucket keeps the shortest display string.
+        XCTAssertTrue(collapsed.contains(where: {
+            $0.display == "After Talk project details" && $0.count == 3
+        }))
+    }
+
     func testMetadataRouterAnswerSanitizesForSpeech() {
         // Regression: the deterministic metadata router used to return
         // `Your most recent meeting is "Foo".` with literal quotes around the
