@@ -499,7 +499,11 @@ final class QAOrchestrator {
             liveAnswer = disclaimer
             await enterSpeakingSession()
             armBargeIn()
-            await tts.speak(disclaimer)
+            // Same sanitizer as `speakImmediateGlobalAnswer` — the disclaimers
+            // are clean today but routing them through the helper keeps every
+            // direct-speak path honest if the strings are ever reworded.
+            let spokenDisclaimer = Self.speechTextForTTS(disclaimer)
+            await tts.speak(spokenDisclaimer.isEmpty ? disclaimer : spokenDisclaimer)
             bargeIn.stop()
             let elapsed = totalStart.duration(to: .now).aftertalkMillis
             liveAnswer = ""
@@ -873,7 +877,11 @@ final class QAOrchestrator {
             liveAnswer = disclaimer
             await enterSpeakingSession()
             armBargeIn()
-            await tts.speak(disclaimer)
+            // Same sanitizer as `speakImmediateGlobalAnswer` — the disclaimers
+            // are clean today but routing them through the helper keeps every
+            // direct-speak path honest if the strings are ever reworded.
+            let spokenDisclaimer = Self.speechTextForTTS(disclaimer)
+            await tts.speak(spokenDisclaimer.isEmpty ? disclaimer : spokenDisclaimer)
             bargeIn.stop()
             let elapsed = totalStart.duration(to: .now).aftertalkMillis
             liveAnswer = ""
@@ -1095,7 +1103,20 @@ final class QAOrchestrator {
         liveAnswer = answer
         await enterSpeakingSession()
         armBargeIn()
-        await tts.speak(answer)
+        // Run the deterministic-router answer through the same speech-text
+        // sanitizer the streaming path uses. Without this, answers like
+        // `Your most recent meeting is "Foo Bar".` reach Kokoro with literal
+        // quote characters, the chunker splits weirdly (`In"` / `AI is
+        // discussed in"`), and a smoke-test reviewer hears the artifact in
+        // playback. The display string in `liveAnswer` keeps the original
+        // text so the chat bubble renders the canonical answer.
+        let spokenAnswer = Self.speechTextForTTS(answer)
+        if !spokenAnswer.isEmpty {
+            await tts.speak(spokenAnswer)
+        } else {
+            log.warning("speakImmediateGlobalAnswer: sanitized text was empty — falling back to raw answer")
+            await tts.speak(answer)
+        }
         bargeIn.stop()
         let elapsed = totalStart.duration(to: .now).aftertalkMillis
         liveAnswer = ""

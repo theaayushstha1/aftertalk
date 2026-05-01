@@ -193,6 +193,19 @@ final class GlobalAskRouterTests: XCTestCase {
         )
     }
 
+    func testMetadataRouterAnswerSanitizesForSpeech() {
+        // Regression: the deterministic metadata router used to return
+        // `Your most recent meeting is "Foo".` with literal quotes around the
+        // title, and `speakImmediateGlobalAnswer` then handed that raw text
+        // to Kokoro. The chunker split it into `In"` / `is" Foo"` artifacts.
+        // The fix routes router answers through `speechTextForTTS` before
+        // playback. Verify the sanitizer does the right thing on the exact
+        // shape the router produces.
+        let routerAnswer = #"Your most recent meeting is "Class · Something"."#
+        let spoken = QAOrchestrator.speechTextForTTS(routerAnswer)
+        XCTAssertEqual(spoken, "Your most recent meeting is Class · Something.")
+    }
+
     func testMentionCountAnswerAggregatesAcrossMeetings() {
         let counts = [
             MeetingMentionCount(meetingId: UUID(), title: "Research Sync", count: 4),
